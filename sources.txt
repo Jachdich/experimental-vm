@@ -1,0 +1,5 @@
+https://dev.to/mak12776/write-lisp-in-python-42ph
+https://stackoverflow.com/questions/3497168/lisp-compiler-design
+https://mpov.timmorgan.org/i-built-a-lisp-compiler/
+https://github.com/seven1m/scheme-vm
+https://github.com/kanaka/mal/blob/master/process/guide.md

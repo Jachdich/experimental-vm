@@ -1,5 +1,8 @@
 #include <iostream>
+#include <fstream>
 #include <string>
+#include <vector>
+#include <cstdint>
 
 enum DataType {
     INT,
@@ -8,6 +11,10 @@ enum DataType {
     CHAR,
     FUNCTION,
 };
+
+void fatal(std::string msg) {
+    std::cout << "Fatal: " << msg;
+}
 
 enum Opcodes {
     NOP,
@@ -20,11 +27,33 @@ enum Opcodes {
 
 struct stack_t {
     DataType type;
-    void *data;
+    union {
+        int32_t * iptr;
+        double * dptr;
+        std::string * strptr;
+        int8_t * cptr;
+    };
+
+    stack_t(int val) {
+        iptr = new int[]{val};
+    }
+    stack_t(double val) {
+        dptr = new double[]{val};
+    }
+    stack_t(std::string val) {
+        strptr = new std::string(val);
+    }
+    stack_t(int8_t val) {
+        cptr = new int8_t[]{val};
+    }
+
     stack_t operator+(stack_t other) {
+        if (type != other.type) {
+            fatal("Try to add different types\n");
+        }
         switch (type) {
-            case INT: return {INT, new int[1] {*static_cast<int*>(data) + *static_cast<int*>(other.data)}};
-            case DOUBLE: return {DOUBLE, new double[1] {*static_cast<double*>(data) + *static_cast<double*>(other.data)}};
+            case INT: return stack_t(*iptr + *other.iptr);
+            case DOUBLE: return stack_t;
             case STRING: return {STRING, new std::string(*static_cast<std::string*>(data) + *static_cast<std::string*>(other.data))};
         }
     }
@@ -42,17 +71,8 @@ std::ostream &operator<<(std::ostream& a, const stack_t& b) {
     }
 }
 
-stack_t constants[2];
-
-char code[] = {
-    PUSH,
-    0x0,
-    PUSH,
-    0x1,
-    ADD,
-    OUT,
-    HALT,
-};
+stack_t * constants;
+uint32_t * code;
 
 int sp = 0;
 int pc = 0;
@@ -87,19 +107,37 @@ void run() {
     }
 }
 
+uint32_t readUInt32(std::vector<uint8_t> vals, int pos) {
+    uint32_t out = 0;
+    for (int i = 0; i < 4; i++) {
+        out = (out << 8) | vals[pos + i];
+    }
+    return out;
+}
+
+uint32_t readBytes(std::vector<uint8_t> buffer, uint16_t offset, uint32_t *&data) {
+    uint32_t size = readUInt32(buffer, offset);
+    data  = new uint32_t[size];
+    for (int i = 0; i < size; i++) {
+        out[i] = buffer[i + 4 + offset];
+    }
+    return size + 4;
+}
+
 int main(int argc, char ** argv) {
-    //if (argc < 2) {
-    //    usage();
-    //}
-    //std::ifstream inp;
-    //inp.open(argv[1]);
-    //std::string content((std::istreambuf_iterator<char>(afile)), (std::istreambuf_iterator<char>()));
-    //inp.close();
-    constants[0].type = STRING;
-    constants[1].type = STRING;
-    constants[0].data = new std::string("hey guys I bet this");
-    constants[1].data = new std::string(" doesn't work\n");
+    if (argc < 2) {
+       std::cout << "Usage: " << argv[0] << " filename\n";
+       return -1;
+    }
+    std::ifstream inp(argv[1], std::ios::binary);
+    if (!inp) {
+        std::cout << "Could not read file!\n";
+        return -1;
+    }
+    std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(inp), {});
+    inp.close();
+    uint32_t codeSize = readBytes(buffer, 0, code);
+    uint32_t dataSize = readBytes(buffer, codeSize, data);
     run();
     return 0;
-
 }
