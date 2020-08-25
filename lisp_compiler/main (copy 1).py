@@ -1,4 +1,4 @@
-import re, random
+import re
 
 class Value:
     AUTO = -1
@@ -7,44 +7,6 @@ class Value:
     def __init__(self, value=None, ty=AUTO):
         self.value = value
         
-class Data:
-    def __init__(self):
-        self.data = []
-
-    def addData(self, val):
-        self.data.append(val)
-        return len(self.data) - 1
-
-    def compile(self):
-        print(self.data)
-
-class Symbol:
-    def __init__(self, value):
-        self.value = value
-
-    def __add__(self, other):
-        return self.value + other
-
-    def __str__(self):
-        return self.value
-
-    def __repr__(self):
-        return f"Symbol('{self.value}')"
-
-    def __hash__(self):
-        return hash(self.value)
-
-    def __eq__(self, other):
-        if isinstance(other, Symbol):
-            return self.value == other.value
-        else:
-            return self.value == other
-    
-    def __ne__(self, other):
-        return not(self == other)
-
-data = Data()
-functions = []
 
 class Env:
     def __init__(self, outer, binds=None, exprs=None):
@@ -56,7 +18,7 @@ class Env:
         
     def get(self, key):
         env = self.find(key)
-        if env == None: raise Exception(f"Not found: '{key}' {self.data}")
+        if env == None: raise Exception("Not found: " + key)
         return env.data[key]
     
     def put(self, key, value):
@@ -101,7 +63,7 @@ class Reader:
         elif token == "nil": return None
         elif token == "true": return True
         elif token == "false": return False
-        else: return Symbol(token) #todo: symbol
+        else: return str(token) #todo: symbol
 
     def next(self):
         self.pos += 1
@@ -146,27 +108,24 @@ def parse(reader):
     else:
         return out
 
-a = {Symbol('+'): lambda *args: " ".join([str(i) for i in args]) + " add",
-     Symbol('-'): lambda *args: " ".join([str(i) for i in args]) + " sub",
-     Symbol("*"): lambda *args: " ".join([str(i) for i in args]) + " mul",
-     Symbol('/'): lambda *args: " ".join([str(i) for i in args]) + " div"}
 
+a = {'+': lambda a,b: a+b,
+            '-': lambda a,b: a-b,
+            '*': lambda a,b: a*b,
+            '/': lambda a,b: int(a/b)}
 test_env = Env(None)
 test_env.data = a
 
-def genNewUniqueLabel():
-    return "".join([chr(random.randint(ord("a"), ord("z"))) for i in range(10)])
-
 def eval_ast(ast, env):
-    if isinstance(ast, Symbol):
+    if type(ast) == type(str()):
         return env.get(ast)
-    if type(ast) == list:
+    if type(ast) == type(list()):
         return [evaluate(i, env) for i in ast]
     return ast
 
 def evaluate(ast, env):
     #print("AST: " + str(ast))
-    if type(ast) == list:
+    if type(ast) == type(list()):
         if len(ast) == 0:
             return ast
         if ast[0] == "def":
@@ -184,53 +143,33 @@ def evaluate(ast, env):
 
         elif ast[0] == "if":
             ex = evaluate(ast[1], env)
-            trueside = evaluate(ast[2], env)
-            falseside = evaluate(ast[3], env)
-            truelabel  = genNewUniqueLabel()
-            falselabel = genNewUniqueLabel()
-            endlabel   = genNewUniqueLabel()
-            return f"{ex} cmp 0 jz {truelabel} jnz {falselabel} {truelabel}: {trueside} jp {endlabel} {falselabel}: {falseside} {endlabel}:"
-            #if ex != None and ex != False:
-            #    return evaluate(ast[2], env)
-            #if len(ast) > 3:
-            #    return evaluate(ast[3], env)
-            #else:
-            #    return None
+            if ex != None and ex != False:
+                return evaluate(ast[2], env)
+            if len(ast) > 3:
+                return evaluate(ast[3], env)
+            else:
+                return None
 
         elif ast[0] == "fn":
             nenv = Env(env)
-            functions.append(evaluate(ast[2], Env(env)))
             def fn(*args):
-                return "call whatisit"
-                #return evaluate(ast[2], Env(env, ast[1], list(args)))
+                return evaluate(ast[2], Env(env, ast[1], list(args)))
             
             return fn
-
+            
         x = eval_ast(ast, env)
         return x[0](*x[1:])
     return eval_ast(ast, env)
 
 
 
-#print(evaluate(parse(Reader("(+ 1 (+ 2 3))")), test_env))
-#print(data.compile())
 while True:
-    #try:
+    try:
         print(evaluate(parse(Reader(input("usr> "))), test_env))
-    #except Exception as e:
-    #    print(e)
+    except Exception as e:
+        print(e)
         
-
-"""
-
-(def x 5)
-(def y (+ x 1)
-(def z (fn (a, b) (+ a b)))
-(z x y)
-
-5 dup 1 add call z
-z: add ret
-"""
+        
 #print(parse(tokenise("(def a (+ 2 2))")))
 #print(parse(tokenise("a")))
 #print(print_ast(parse(tokenise("a"))))

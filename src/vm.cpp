@@ -10,6 +10,7 @@ enum DataType {
     STRING,
     CHAR,
     FUNCTION,
+    NONE,
 };
 
 void fatal(std::string msg) {
@@ -34,17 +35,21 @@ struct stack_t {
         int8_t * cptr;
     };
 
+    stack_t() {
+        type = DataType::NONE;
+    }
+
     stack_t(int val) {
-        iptr = new int[]{val};
+        iptr = new int[1]{val};
     }
     stack_t(double val) {
-        dptr = new double[]{val};
+        dptr = new double[1]{val};
     }
     stack_t(std::string val) {
         strptr = new std::string(val);
     }
     stack_t(int8_t val) {
-        cptr = new int8_t[]{val};
+        cptr = new int8_t[1]{val};
     }
 
     stack_t operator+(stack_t other) {
@@ -53,21 +58,28 @@ struct stack_t {
         }
         switch (type) {
             case INT: return stack_t(*iptr + *other.iptr);
-            case DOUBLE: return stack_t;
-            case STRING: return {STRING, new std::string(*static_cast<std::string*>(data) + *static_cast<std::string*>(other.data))};
+            case DOUBLE: return stack_t(*dptr + *other.dptr);
+            case STRING: return stack_t(*strptr + *other.strptr);
         }
     }
 
     stack_t operator-(stack_t other) {
-        return {INT, (void*)nullptr};
+        if (type != other.type) {
+            fatal("Try to add different types\n");
+        }
+        switch (type) {
+            case INT: return stack_t(*iptr - *other.iptr);
+            case DOUBLE: return stack_t(*dptr - *other.dptr);
+            case STRING: fatal("Try to subtract strings\n"); break;
+        }
     }
 };
 
 std::ostream &operator<<(std::ostream& a, const stack_t& b) {
     switch (b.type) {
-        case INT: return a << std::to_string(*static_cast<int*>(b.data));
-        case DOUBLE: return a << std::to_string(*static_cast<double*>(b.data));
-        case STRING: return a << *static_cast<std::string*>(b.data);
+        case INT: return a << std::to_string(*b.iptr);
+        case DOUBLE: return a << std::to_string(*b.dptr);
+        case STRING: return a << *b.strptr;
     }
 }
 
@@ -117,11 +129,12 @@ uint32_t readUInt32(std::vector<uint8_t> vals, int pos) {
 
 uint32_t readBytes(std::vector<uint8_t> buffer, uint16_t offset, uint32_t *&data) {
     uint32_t size = readUInt32(buffer, offset);
-    data  = new uint32_t[size];
+    data = new uint32_t[size];
     for (int i = 0; i < size; i++) {
-        out[i] = buffer[i + 4 + offset];
+        data[i] = buffer[i + 4 + offset];
     }
-    return size + 4;
+    uint32_t bytesRead = size + 4;
+    return bytesRead;
 }
 
 int main(int argc, char ** argv) {
@@ -137,7 +150,9 @@ int main(int argc, char ** argv) {
     std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(inp), {});
     inp.close();
     uint32_t codeSize = readBytes(buffer, 0, code);
-    uint32_t dataSize = readBytes(buffer, codeSize, data);
+    uint32_t dataSize = readBytes(buffer, codeSize, (uint32_t *)constants);
     run();
+    delete[] code;
+    delete[] constants;
     return 0;
 }
