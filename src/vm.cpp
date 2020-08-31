@@ -39,17 +39,21 @@ struct stack_t {
         type = DataType::NONE;
     }
 
-    stack_t(int val) {
+    stack_t(int32_t val) {
         iptr = new int[1]{val};
+        type = DataType::INT;
     }
     stack_t(double val) {
         dptr = new double[1]{val};
+        type = DataType::DOUBLE;
     }
     stack_t(std::string val) {
         strptr = new std::string(val);
+        type = DataType::STRING;
     }
     stack_t(int8_t val) {
         cptr = new int8_t[1]{val};
+        type = DataType::CHAR;
     }
 
     stack_t operator+(stack_t other) {
@@ -65,7 +69,7 @@ struct stack_t {
 
     stack_t operator-(stack_t other) {
         if (type != other.type) {
-            fatal("Try to add different types\n");
+            fatal("Try to subtract different types\n");
         }
         switch (type) {
             case INT: return stack_t(*iptr - *other.iptr);
@@ -83,8 +87,8 @@ std::ostream &operator<<(std::ostream& a, const stack_t& b) {
     }
 }
 
-stack_t * constants;
-uint32_t * code;
+std::vector<stack_t> constants;
+std::vector<uint8_t> code;
 
 int sp = 0;
 int pc = 0;
@@ -127,15 +131,49 @@ uint32_t readUInt32(std::vector<uint8_t> vals, int pos) {
     return out;
 }
 
-uint32_t readBytes(std::vector<uint8_t> buffer, uint16_t offset, uint32_t *&data) {
+uint32_t readBytes(std::vector<uint8_t>& buffer, uint16_t offset, std::vector<uint8_t> * data) {
     uint32_t size = readUInt32(buffer, offset);
-    data = new uint32_t[size];
+    data->resize(size);
     for (int i = 0; i < size; i++) {
-        data[i] = buffer[i + 4 + offset];
+        (*data)[i] = buffer[i + 4 + offset];
     }
     uint32_t bytesRead = size + 4;
     return bytesRead;
 }
+
+void readConstantsFromBytes(std::vector<uint8_t> bytes, std::vector<stack_t> &consts) {
+    uint32_t pos = 0;
+    //TODO alocate size instead of push_back
+    while (pos < bytes.size()) {
+        uint8_t type = bytes[pos]; pos++;
+        uint32_t size = readUInt32(bytes, pos); pos += 4;
+        switch ((DataType) type) {
+            case DataType::INT: {
+                if (size != 4) {
+                    fatal("Error reading file: INT datatype != 4 bytes\n");
+                } else {
+                    int32_t val = (int32_t)readUInt32(bytes, pos); pos += 4;
+                    consts.push_back(stack_t(val));
+                }
+                break;
+            }
+            case DataType::STRING: {
+                std::vector<uint8_t> buf(size);
+                for (int i = 0; i < size; i++) {
+                    buf.push_back(bytes[pos++]);
+                }
+                consts.push_back(stack_t(std::string(buf.begin(), buf.end())));
+            }
+
+        }
+    }
+}
+
+/*
+type: 1 byte;
+size: 4 bytes;
+data: size bytes read into stack_t;
+*/
 
 int main(int argc, char ** argv) {
     if (argc < 2) {
@@ -149,10 +187,13 @@ int main(int argc, char ** argv) {
     }
     std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(inp), {});
     inp.close();
-    uint32_t codeSize = readBytes(buffer, 0, code);
-    uint32_t dataSize = readBytes(buffer, codeSize, (uint32_t *)constants);
+    std::vector<uint8_t> constantsBytes;
+    uint32_t codeSize = readBytes(buffer, 0, &code);
+    uint32_t dataSize = readBytes(buffer, codeSize, &constantsBytes);
+    readConstantsFromBytes(constantsBytes, constants);
+    for (stack_t x : constants) {
+        std::cout << x.type << ", " << *x.iptr << "\n";
+    }
     run();
-    delete[] code;
-    delete[] constants;
     return 0;
 }

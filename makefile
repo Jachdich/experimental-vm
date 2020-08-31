@@ -8,14 +8,11 @@ citrus: $(OBJECTS)
 obj/%.o: src/%.cpp $(HEADERS)
 	g++ -c -o $@ $< -Wall -g -Iinclude
 
-obj/FastNoise.o: src/FastNoise.cpp
-	g++ -c -o $@ $< -Wall -g -O3 -Iinclude
-
 debug: citrus
 	gdb citrus
 
 run: citrus
-	./citrus
+	./citrus test.vm
 
 clean:
 	rm obj/*.o
