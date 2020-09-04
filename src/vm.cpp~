@@ -246,9 +246,9 @@ int main(int argc, char ** argv) {
     uint32_t codeSize = readBytes(buffer, 0, &code);
     uint32_t dataSize = readBytes(buffer, codeSize, &constantsBytes);
     readConstantsFromBytes(constantsBytes, constants);
-    //for (stack_t x : constants) {
-    //    std::cout << x.type << ", " << *x.iptr << "\n";
-    //}
+    for (stack_t x : constants) {
+        std::cout << x.type << ", " << *x.iptr << "\n";
+    }
     run();
     return 0;
 }

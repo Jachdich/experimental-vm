@@ -112,7 +112,12 @@ def parse(reader):
 a = {'+': lambda a,b: a+b,
             '-': lambda a,b: a-b,
             '*': lambda a,b: a*b,
-            '/': lambda a,b: int(a/b)}
+            '/': lambda a,b: int(a/b),
+            '=': lambda a,b: a == b,
+            '<': lambda a,b: a < b,
+            '>': lambda a,b: a > b,
+     '>=': lambda a,b: a >= b,
+     '<=': lambda a,b: a <= b,}
 test_env = Env(None)
 test_env.data = a
 
