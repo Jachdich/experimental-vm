@@ -20,7 +20,7 @@ void fatal(std::string msg) {
 uint32_t readUInt32(std::vector<uint8_t> vals, int pos) {
     uint32_t out = 0;
     for (int i = 0; i < 4; i++) {
-        out = (out << 8) | vals[pos + i];
+        out = out | vals[pos + i] << 8 * (3 - i);
     }
     return out;
 }
@@ -31,13 +31,14 @@ enum Opcodes {
     SUB,
     OUT,
     PUSH,
-    //implement//////
     LSTACK,
     SSTACK,
     CALL,
     RET,
-    /////////////////
     HALT,
+    CMP,
+    JZ,
+    JP,
 };
 
 struct stack_t {
@@ -48,7 +49,7 @@ struct stack_t {
         std::string * strptr;
         int8_t * cptr;
     };
-    
+
     stack_t copy() {
         switch (type) {
         case INT: return stack_t(*iptr);
@@ -152,7 +153,6 @@ void step() {
         case OUT: std::cout << pop(); break;
         case PUSH: push(constants[readUInt32(code, pc)]); pc += 4; break;
         case LSTACK:
-            //std::cout << "Loading stack loc " << readUInt32(code, pc) + bp << "\n";
             push(stack[bp + readUInt32(code, pc)].copy());
             pc += 4;
             break;
@@ -166,17 +166,16 @@ void step() {
             ret_stack[ret_sp++] = readUInt32(code, pc); //store num of parameters
             bp = sp - readUInt32(code, pc);
             pc += 4;
-            //std::cout << "Jumping from " << pc;
             pc = readUInt32(code, pc);
-            //std::cout << " to " << pc << "\n";
             break;
         case RET:
-            sp = bp + ret_stack[--ret_sp];
+            sp = bp + ret_stack[--ret_sp] + 1;
             bp = ret_stack[--ret_sp];
             pc = ret_stack[--ret_sp];
             break;
         case HALT: running = false; break;
-        default: std::cout << "unknown opcode " << (int)instr << "\n"; break;
+        case CMP:  push(stack_t(pop() == pop()));
+        default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
     }
 }
 
@@ -246,9 +245,6 @@ int main(int argc, char ** argv) {
     uint32_t codeSize = readBytes(buffer, 0, &code);
     uint32_t dataSize = readBytes(buffer, codeSize, &constantsBytes);
     readConstantsFromBytes(constantsBytes, constants);
-    for (stack_t x : constants) {
-        std::cout << x.type << ", " << *x.iptr << "\n";
-    }
     run();
     return 0;
 }

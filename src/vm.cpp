@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <sstream>
 
 enum DataType {
     INT,
@@ -11,6 +12,7 @@ enum DataType {
     CHAR,
     FUNCTION,
     NONE,
+    BOOLEAN,
 };
 
 void fatal(std::string msg) {
@@ -20,7 +22,7 @@ void fatal(std::string msg) {
 uint32_t readUInt32(std::vector<uint8_t> vals, int pos) {
     uint32_t out = 0;
     for (int i = 0; i < 4; i++) {
-        out = (out << 8) | vals[pos + i];
+        out = out | vals[pos + i] << 8 * (3 - i);
     }
     return out;
 }
@@ -31,13 +33,16 @@ enum Opcodes {
     SUB,
     OUT,
     PUSH,
-    //implement//////
     LSTACK,
     SSTACK,
     CALL,
     RET,
-    /////////////////
     HALT,
+    CMP,
+    JZ,
+    JP,
+    POP,
+    POP_UNDER,
 };
 
 struct stack_t {
@@ -47,14 +52,16 @@ struct stack_t {
         double * dptr;
         std::string * strptr;
         int8_t * cptr;
+        bool boolean;
     };
-    
+
     stack_t copy() {
         switch (type) {
         case INT: return stack_t(*iptr);
         case DOUBLE: return stack_t(*dptr);
         case CHAR: return stack_t(*cptr);
         case STRING: return stack_t(*strptr);
+        case BOOLEAN: return stack_t(boolean);
         default: return stack_t();
         }
     }
@@ -78,6 +85,30 @@ struct stack_t {
     stack_t(int8_t val) {
         cptr = new int8_t[1]{val};
         type = DataType::CHAR;
+    }
+
+    stack_t(bool val) {
+        this->boolean = val;
+        type = DataType::BOOLEAN;
+    }
+
+    bool asBoolean() {
+        if (type == DataType::BOOLEAN) {
+            return boolean;
+        } else {
+            if (type != DataType::NONE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    stack_t operator==(const stack_t& other) {
+        if (this->type != other.type) return stack_t(false);
+        switch (type) {
+            case INT: return stack_t(*iptr == *other.iptr);
+            default: return stack_t(false);
+        }
     }
 
     stack_t operator+(stack_t other) {
@@ -108,6 +139,7 @@ std::ostream &operator<<(std::ostream& a, const stack_t& b) {
         case INT: return a << std::to_string(*b.iptr);
         case DOUBLE: return a << std::to_string(*b.dptr);
         case STRING: return a << *b.strptr;
+        case BOOLEAN: if (b.boolean) { return a << "true"; } else { return a << "false"; }
     }
 }
 
@@ -119,6 +151,7 @@ int bp = 0;
 int pc = 0;
 int ret_sp = 0;
 bool running = true;
+bool debug = false;
 
 stack_t stack[1000];
 int ret_stack[1000];
@@ -132,27 +165,48 @@ stack_t pop() {
     return stack[--sp];
 }
 
+std::string getInstrName(char opcode) {
+    switch (opcode) {
+        case NOP: return "NOP";
+        case ADD: return "ADD";
+        case SUB: return "SUB";
+        case OUT: return "OUT";
+        case PUSH: return "PUSH";
+        case LSTACK: return "LSTACK";
+        case SSTACK: return "SSTACK";
+        case CALL: return "CALL";
+        case RET: return "RET";
+        case HALT: return "HALT";
+        case CMP: return "CMP";
+        case JZ: return "JZ";
+        case JP: return "JP";
+        case POP: return "POP";
+        case POP_UNDER: return "POP_UNDER";
+        default: return std::to_string((int)opcode);
+    }
+}
+
 void step() {
     char instr = code[pc++];
-    if (false) {
-    for (int i = 0; i < sp; i++) {
-        std::cout << *stack[i].iptr << " ";
-    }
-    std::cout << "\n";
-    std::cout << "Instr   : " << (int)instr << "\n";
-    std::cout << "BasePtr : " << bp << "\n";
-    std::cout << "StackPtr: " << sp << "\n";
-    std::cout << "ProgCtr : " << pc << "\n";
-    std::cout << "---------------------\n";
+    if (debug) {
+        std::stringstream debugLine;
+        for (int i = 0; i < sp; i++) {
+            debugLine << stack[i] << " ";
+        }
+        debugLine << std::string(30 - debugLine.str().size(), ' ');
+        debugLine << getInstrName(instr) << std::string(12 - getInstrName(instr).size(), ' ');
+        debugLine << bp << std::string(10 - std::to_string(bp).size(), ' ');
+        debugLine << sp << std::string(10 - std::to_string(sp).size(), ' ');
+        debugLine << pc << "\n";
+        std::cout << debugLine.str();
     }
     switch (instr) {
         case NOP: break;
         case ADD: push(pop() + pop()); break;
-        case SUB: { stack_t tmp = pop(); push(pop() - tmp); break; }
+        case SUB: { stack_t tmp = pop(); push(tmp - pop()); break; }
         case OUT: std::cout << pop(); break;
         case PUSH: push(constants[readUInt32(code, pc)]); pc += 4; break;
         case LSTACK:
-            //std::cout << "Loading stack loc " << readUInt32(code, pc) + bp << "\n";
             push(stack[bp + readUInt32(code, pc)].copy());
             pc += 4;
             break;
@@ -166,17 +220,33 @@ void step() {
             ret_stack[ret_sp++] = readUInt32(code, pc); //store num of parameters
             bp = sp - readUInt32(code, pc);
             pc += 4;
-            //std::cout << "Jumping from " << pc;
             pc = readUInt32(code, pc);
-            //std::cout << " to " << pc << "\n";
             break;
         case RET:
-            sp = bp + ret_stack[--ret_sp];
+            sp = bp + 1;// + ret_stack[--ret_sp] + 1;
+            --ret_sp;
             bp = ret_stack[--ret_sp];
             pc = ret_stack[--ret_sp];
             break;
         case HALT: running = false; break;
-        default: std::cout << "unknown opcode " << (int)instr << "\n"; break;
+        case CMP:  push(pop() == pop()); break;
+        case JZ: {
+            uint32_t address = readUInt32(code, pc);
+            pc += 4;
+            if (pop().asBoolean()) {
+                pc = address;
+            }
+            break;
+        }
+        case POP: pop(); break;
+        case POP_UNDER: {
+            stack_t tmp = pop();
+            sp--;
+            push(tmp); //TODO more efficient version
+            break;
+        }
+        case JP: pc = readUInt32(code, pc); break;
+        default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
     }
 }
 
@@ -235,6 +305,17 @@ int main(int argc, char ** argv) {
        std::cout << "Usage: " << argv[0] << " filename\n";
        return -1;
     }
+    if (argc == 3) {
+        if (std::string(argv[2]) == "-d") {
+            debug = true;
+            std::cout << "Stack                         ";
+            std::cout << "Instruction ";
+            std::cout << "BasePtr   ";
+            std::cout << "StackPtr  ";
+            std::cout << "ProgCounter\n";
+            std::cout << "-------------------------------------------------------------------------\n";
+        }
+    }
     std::ifstream inp(argv[1], std::ios::binary);
     if (!inp) {
         std::cout << "Could not read file!\n";
@@ -246,9 +327,6 @@ int main(int argc, char ** argv) {
     uint32_t codeSize = readBytes(buffer, 0, &code);
     uint32_t dataSize = readBytes(buffer, codeSize, &constantsBytes);
     readConstantsFromBytes(constantsBytes, constants);
-    //for (stack_t x : constants) {
-    //    std::cout << x.type << ", " << *x.iptr << "\n";
-    //}
     run();
     return 0;
 }
