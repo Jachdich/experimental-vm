@@ -43,6 +43,7 @@ enum Opcodes {
     JP,
     POP,
     POP_UNDER,
+    DUP,
 };
 
 struct stack_t {
@@ -182,6 +183,7 @@ std::string getInstrName(char opcode) {
         case JP: return "JP";
         case POP: return "POP";
         case POP_UNDER: return "POP_UNDER";
+        case DUP: return "DUP";
         default: return std::to_string((int)opcode);
     }
 }
@@ -246,6 +248,12 @@ void step() {
             break;
         }
         case JP: pc = readUInt32(code, pc); break;
+        case DUP: {
+            stack_t temp = pop();
+            push(temp);
+            push(temp);
+            break;
+        }
         default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
     }
 }

@@ -107,6 +107,7 @@ def parse(reader):
         return out
 
 def intToBytes(x):
+    x = int(x) #Workaround for negetive numvers, FIX
     return [
         (x >> 24) & 0xFF,
         (x >> 16) & 0xFF,
@@ -257,6 +258,8 @@ def assemble(asm, funcasm):
             code.append(13)
         elif opcode == "pop_under":
             code.append(14)
+        elif opcode == "dup":
+            code.append(15)
         else:
             code.append(opcode)
 
@@ -317,8 +320,35 @@ with open(infile, "r") as f:
 
 c = Compiler(source)
 asm, funcasm = c.compileCode()
-print(asm)
-print("\n\n\n".join(funcasm))
+#print(asm)
+#print("\n\n\n".join(funcasm))
+asm = """push 30
+call label1 1
+out"""
+funcasm = ["""label1:
+dup
+push 0
+cmp
+jz label2
+dup
+push -1
+cmp
+jz label2
+push 2
+lstack 0
+sub
+call label1 1
+push 1
+lstack 0
+sub
+call label1 1
+add
+jp label5
+label2:
+push 1
+label5:
+pop_under
+ret""",]
 assembled_bytes = assemble(asm, funcasm)
 with open(out, "wb") as f:
     f.write(assembled_bytes)
