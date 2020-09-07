@@ -1,5 +1,13 @@
+#!/usr/bin/python3
 #from assembler import assembler, definition_stackvm
 import re, sys
+
+def error(desc):
+    sys.stderr.write(desc + "\n")
+    sys.exit(1)
+
+def warn(desc):
+    sys.stderr.write(desc + "\n")
 
 class Function:
     def __init__(self, value, args, code, varmaps):
@@ -57,7 +65,7 @@ class Reader:
         string_re = re.compile(r'"(?:[\\].|[^\\"])*"')
         if re.match(int_re, token): return int(token)
         elif re.match(float_re, token): return float(token)
-        elif re.match(string_re, token): return token[1:-1]
+        elif re.match(string_re, token): return token
         elif token == "nil": return None
         elif token == "true": return True
         elif token == "false": return False
@@ -76,7 +84,7 @@ def parse(reader):
     out = []
     if reader.peek() == "(":
         #if tokens[0] != "(": raise SyntaxError()
-        if reader.peek(-1) != ")": raise SyntaxError("Expected ')' to close '('")
+        if reader.peek(-1) != ")": error("Syntax error: Expected ')' to close '('")
         reader.tokens = reader.tokens[1:-1]
         
     while reader.pos < len(reader.tokens):
@@ -87,6 +95,8 @@ def parse(reader):
             num_right = 0
             inside_param = []
             while not num_right > num_left:
+                if reader.pos == len(reader.tokens):
+                    error("Syntax error: Expected ')' (to closee '(')")
                 if reader.peek() == "(":
                     num_left += 1
                 elif reader.peek() == ")":
@@ -114,13 +124,36 @@ def intToBytes(x):
         (x >> 8 ) & 0xFF,
         x & 0xFF]
 
+def doEscapes(x):
+    out = ""
+    escapeNext = False
+    for c in x:
+        if escapeNext:
+            if c == "\\":
+                out += "\\"
+            elif c == "n":
+                out += "\n"
+            else:
+                error(f"Syntax error: Invalid escape sequence '{x}'")
+            escapeNext = False
+            continue
+        if c == "\\":
+            escapeNext = True
+            continue
+        out += c
+    return out
+
 class Compiler:
     def __init__(self, code):
         self.func = {
         "+": "add",
         "-": "sub",
         "==": "cmp",
-        "print": "out",   
+        "<": "lt",
+        ">": "gt",
+        "<=": "lteq",
+        ">=": "gteq",
+        "print": "out",
         }
 
         self.global_vars = []
@@ -142,18 +175,25 @@ class Compiler:
             return out
         elif type(ast) == int:
             return "push " + str(ast)
+        elif type(ast) == str and ast[0] == "\"":
+            return "push " + ast[1:-1] #todo
         elif type(ast) == str:
             if ast in varmaps:
                 if isinstance(varmaps[ast], Function):
                     return "call " + varmaps[ast].value + " " + str(varmaps[ast].args)
                 return "lstack " + str(varmaps[ast])
             else:
-                return self.func[ast]
+                try:
+                    return self.func[ast]
+                except:
+                    error(f"Invalid varible, function or operator '{ast}'")
 
     def genCode(self, ast, varmaps=None):
         if varmaps == None: varmaps = {}
         if type(ast) == list:
             if ast[0] == "fn":
+                if len(ast) < 3 or len(ast) > 3:
+                    error("Syntax error: invalid function definition")
                 paramlist = list(ast[1])
                 code = list(ast[2])
                 paramlist.reverse()
@@ -164,24 +204,37 @@ class Compiler:
                 return func, varmaps
             
             if ast[0] == "def":
+                if len(ast) != 3:
+                    error("Syntax error: Invalid variable definition")
                 name = ast[1]
                 val, _varmaps = self.genCode(ast[2], varmaps)
                 if isinstance(val, Function):
                     varmaps[name] = val
+                    return "", varmaps
                 else:
-                    varmaps[name] = len(varmaps) #todo make sure this is right
-                return "", varmaps
+                    varmaps[name] = len(varmaps) - 1  #todo make sure this is right
+                    return val, varmaps
 
             if ast[0] == "if":
-                expr, varmaps = self.genCode(ast[1], varmaps)
-                trueside, varmaps = self.genCode(ast[2], varmaps)
-                falseside, varmaps = self.genCode(ast[3], varmaps)
-                
-                truelabel = self.genNewLabel()
-                endlabel  = self.genNewLabel()
+                if len(ast) == 4:
+                    expr, varmaps = self.genCode(ast[1], varmaps)
+                    trueside, varmaps = self.genCode(ast[2], varmaps)
+                    falseside, varmaps = self.genCode(ast[3], varmaps)
+                    
+                    truelabel = self.genNewLabel()
+                    endlabel  = self.genNewLabel()
 
-                return f"{expr}\njz {truelabel}\n{falseside}\njp {endlabel}\n{truelabel}:\n{trueside}\n{endlabel}:", varmaps
-                
+                    return f"{expr}\njz {truelabel}\n{falseside}\njp {endlabel}\n{truelabel}:\n{trueside}\n{endlabel}:", varmaps
+                elif len(ast) == 3:
+                    expr, varmaps = self.genCode(ast[1], varmaps)
+                    trueside, varmaps = self.genCode(ast[2], varmaps)
+                    endlabel  = self.genNewLabel()
+
+                    return f"{expr}\njnz {endlabel}\n{trueside}\n{endlabel}:", varmaps
+
+                else:
+                    error("Syntax error: Invalid if-statement")
+                    
             x = self.expr(ast, varmaps)
             x.reverse()
             return "\n".join(x), varmaps
@@ -293,12 +346,23 @@ def assemble(asm, funcasm):
     for x in code:
         f += bytearray([x,])
 
-    datalen = intToBytes(len(constants) * 9)
-    f += bytearray(datalen)
-    for x in constants:
-        f += bytearray([0, 0, 0, 0, 4])
-        f += bytearray(intToBytes(x))
+    #datalen = intToBytes(len(constants) * 9)
+    #f += bytearray(datalen)
 
+    consts = bytearray()
+    for x in constants:
+        if type(x) == int:
+            consts += bytearray([0, 0, 0, 0, 4])
+            consts += bytearray(intToBytes(x))
+        elif type(x) == str:
+            x = doEscapes(x)
+            consts += bytearray([2,])
+            consts += bytearray(intToBytes(len(x)))
+            for c in x:
+                consts += bytearray([ord(c),])
+
+    f += bytearray(intToBytes(len(consts)))
+    f += consts
     return f
                 
         #asmbler = assembler.Assembler(asm, definition_stackvm)
@@ -320,35 +384,9 @@ with open(infile, "r") as f:
 
 c = Compiler(source)
 asm, funcasm = c.compileCode()
-#print(asm)
-#print("\n\n\n".join(funcasm))
-asm = """push 30
-call label1 1
-out"""
-funcasm = ["""label1:
-dup
-push 0
-cmp
-jz label2
-dup
-push -1
-cmp
-jz label2
-push 2
-lstack 0
-sub
-call label1 1
-push 1
-lstack 0
-sub
-call label1 1
-add
-jp label5
-label2:
-push 1
-label5:
-pop_under
-ret""",]
+print(asm)
+print("\n\n\n".join(funcasm))
+
 assembled_bytes = assemble(asm, funcasm)
 with open(out, "wb") as f:
     f.write(assembled_bytes)
