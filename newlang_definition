@@ -36,7 +36,7 @@ class r {
 }
 
 class s extends r {
-    s() {
+    s() {\
         super() #call super constructor
     }
     int doAThing(int a,b,c,d) {
