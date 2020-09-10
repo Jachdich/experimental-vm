@@ -39,6 +39,7 @@ enum Opcodes {
     POP,
     POP_UNDER,
     DUP,
+    JNZ,
 };
 struct stack_t {
     DataType type;
@@ -97,7 +98,7 @@ struct stack_t {
         switch (type) {
             case INT: return stack_t(intval == other.intval);
             case DOUBLE: return stack_t(doubleval == other.doubleval);
-            case STRING: return stack_t(*stringptr == *other.stringptr);
+            case STRING: return stack_t(*strptr == *other.strptr);
             case BOOLEAN: return stack_t(boolean = other.boolean);
             case NONE: return stack_t(true); //if they're both None; None == None -> true
             default: return stack_t(false);
@@ -188,6 +189,7 @@ public:
             case POP: return "POP";
             case POP_UNDER: return "POP_UNDER";
             case DUP: return "DUP";
+            case JNZ: return "JNZ";
             default: return std::to_string((int)opcode);
         }
     }
@@ -255,6 +257,13 @@ public:
                 push(temp);
                 break;
             }
+            case JNZ:
+                if (pop().asBoolean()) {
+                    pc += 4;
+                } else {
+                    pc = readUInt32(code, pc);
+                }
+                break;
             default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
         }
     }
