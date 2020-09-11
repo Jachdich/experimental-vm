@@ -1,7 +1,14 @@
 from pyparsing import *
-import assembler
+import assembler, sys
 
-def Operator(name):
+##expr = Forward()
+##expr << infixNotation(Word(nums), [
+##    (oneOf("* /"), 2, opAssoc.LEFT),
+##    (oneOf("+ -"), 2, opAssoc.LEFT)])
+##print(expr.parseString("1 * 3 + 4 + 3 * 3 + 4 * 4 + 1 + 1 + 1 + 1"))
+##sys.exit(0)
+
+def Operator(name, expr):
     if len(name) == 2:
         return Group(ident + Literal(name[0]).setParseAction(lambda a,b,c: name) \
                      + Group(Optional(expr) + ZeroOrMore(Suppress(",") + expr)) \
@@ -21,10 +28,10 @@ ident  = Word(alphas + "_", alphanums + "_")
 
 term = (Group("(" + expr + ")") | (ident | number))
 mulexpr = Forward()
-mulexpr << (Group(term + (Literal("/") | Literal("*") | Literal("==") + mulexpr)) | term)
+mulexpr << (Operator("()", expr) | Operator("[]", expr) | Operator("{}", expr) |
+            Group(term + (Literal("/") | Literal("*") | Literal("==") + mulexpr)) | term)
 
-expr << (Operator("()") | Operator("[]") | Operator("{}") | \
-         Group(mulexpr + (Literal("+") | Literal("-")) + expr) | mulexpr)
+expr << (Group(mulexpr + OneOrMore(Literal("+") | Literal("-")) + expr) | mulexpr)
 
 tupledef = Group(Optional(Suppress("(")) + expr + OneOrMore(Suppress(",") + expr) + Optional(Suppress(")")))
 
@@ -38,12 +45,13 @@ elifsmt = (Literal("elif").setParseAction(lambda a,b,c: "if") + expr + Suppress(
 ifsmt = Group(Literal("if") + expr + Suppress("{") + code + Suppress("}") +\
               Optional(Group(OneOrMore(elifsmt) + Optional(elsesmt)))) + Optional(elsesmt)
 
+
 funcdef = Group(ident.copy().setParseAction(lambda a,b,c: ["def",] + list(c)) + ident + \
-                Suppress("(") + Group(ZeroOrMore(Group(ident + ident + Suppress(",") + ZeroOrMore(ident + (Suppress(",") | Suppress(")")))))) \
+                Suppress("(") + Group(ZeroOrMore(Group(ident + ident + (Suppress(",") | Suppress(")"))))) \
                 + Suppress("{") + code + Suppress("}"))
 
 returnsmt = Group(Literal("return") + expr)
-smt = (vardecl | assignment | ifsmt | funcdef | returnsmt)
+smt = (vardecl | assignment | ifsmt | funcdef | returnsmt | expr)
 code << ZeroOrMore(smt)
 
 #print(equation.parseString("a b = c(1, 3*3)"))
@@ -55,13 +63,19 @@ code << ZeroOrMore(smt)
 #print(ree(2, 2, " is 4"))
 #    return str(a * b) + c
 ast = code.parseString("""
-
-int ree(int a, b, str c) {
-    int c = a + b + c
+int ree(int a, int b, str c) {
+    return str(a + b) + c
 }
 
-print(ree(2, 2, " is 4"))
+print(ree(2, 2))
+
 """)
+
+class Function:
+    def __init__(self, rettype, params, code):
+        self.rettype = rettype
+        self.params = params
+        self.code = code
 
 class Env:
     def __init__(self, locals_=None):
@@ -71,6 +85,16 @@ class Env:
             self.locals = locals_
 
         self.labelval = -1
+        self.funcs = {}
+
+    def defFunc(self, rettype, name, params, code):
+        self.funcs[self.getFullFuncName(name, params)] = Function(rettype, params, code)
+
+    def getFunc(self, name, params):
+        return self.funcs[self.getFullFuncName(name, params)]
+
+    def getFullFuncName(self, name, params):
+        return name + "".join([x[0] for x in params])
 
     def newLabel(self):
         self.labelval += 1
@@ -87,6 +111,7 @@ class Env:
         return val
 
     def getNumVars(self):
+        if self.locals == {}: return 0
         return self.locals[max(self.locals)] + 1
 
 class Number:
@@ -182,6 +207,23 @@ class IfStatement:
     def __str__(self):
         return self.__repr__()
 
+class FuncDefinition:
+    def __init__(self, ty, name, args, code):
+        self.ty = ty
+        self.name = name
+        self.args = args
+        self.code = code
+
+    def _eval(self, env):
+        env.defFunc(self.ty, self.name, self.args, self.code)
+        return ""
+
+    def __repr__(self):
+        return f"FuncDefinition({self.ty} {self.name}({self.args}) {{ {self.code} }} )"
+
+    def __str__(self):
+        return self.__repr__()
+
 def makeAST(ast):
     if type(ast) == int: return Number(ast)
     if type(ast) == str: return Var(ast)
@@ -200,6 +242,10 @@ def makeAST(ast):
             return IfStatement(makeAST(ast[1]), makeAST(ast[2]), makeAST(ast[3]))
         if ast[0] == "declare":
             return VarDeclaration(ast[1], ast[2], makeAST(ast[3]))
+
+    if l == 5:
+        if ast[0] == "def":
+            return FuncDefinition(ast[1], ast[2], ast[3], makeAST(ast[4]))
     #if l >= 0:
     #    if ast[0] == "if":
     #        
