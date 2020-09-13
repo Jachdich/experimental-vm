@@ -67,18 +67,36 @@ int ree(int a, int b, str c) {
     return str(a + b) + c
 }
 
-print(ree(2, 2))
+print(ree(2, 2, 1))
 
 """)
 
 class Function:
-    def __init__(self, rettype, params, code):
+    def __init__(self, rettype, params, code, name):
         self.rettype = rettype
         self.params = params
         self.code = code
+        self.name = name
+
+    def compile(self, env):
+        nenv = Env(init=env)
+        for param in self.params:
+            nenv.malloc(param[1])
+
+        init = self.name + ":\n"
+        cleanup = "pop_under\n" * len(self.params) + "ret\n"
+        
+        if type(code) == list:
+            return init + "\n".join([x._eval(nenv) for x in self.code]) + cleanup
+        else:
+            return init + self.code._eval(nenv) + cleanup
 
 class Env:
-    def __init__(self, locals_=None):
+    def __init__(self, locals_=None, init=None):
+        if init != None:
+            self.locals = init.locals.copy()
+            self.labelval = init.labelval
+            self.funcs = init.funcs.copy()
         if locals_ == None:
             self.locals = {}
         else:
@@ -88,7 +106,7 @@ class Env:
         self.funcs = {}
 
     def defFunc(self, rettype, name, params, code):
-        self.funcs[self.getFullFuncName(name, params)] = Function(rettype, params, code)
+        self.funcs[self.getFullFuncName(name, params)] = Function(rettype, params, code, name)
 
     def getFunc(self, name, params):
         return self.funcs[self.getFullFuncName(name, params)]
@@ -113,6 +131,13 @@ class Env:
     def getNumVars(self):
         if self.locals == {}: return 0
         return self.locals[max(self.locals)] + 1
+
+    def compileFunctions(self):
+        code = []
+        for name, func in self.funcs.items():
+            code.append(func.compile(self))
+
+        return code
 
 class Number:
     def __init__(self, value):
@@ -224,13 +249,27 @@ class FuncDefinition:
     def __str__(self):
         return self.__repr__()
 
+class Return:
+    def __init__(self, code):
+        self.code = code
+    def _eval(self, env):
+        return self.code._eval(env)
+
+    def __repr__(self):
+        return f"Return({self.code})"
+
+    def __str__(self):
+        return self.__repr__()
+
 def makeAST(ast):
     if type(ast) == int: return Number(ast)
     if type(ast) == str: return Var(ast)
     l = len(ast)
     if l == 0: pass
     if l == 1: pass
-    if l == 2: pass
+    if l == 2:
+        if ast[0] == "return":
+            return Return(makeAST(ast[1]))
     if l == 3:
         if ast[1] in OPERATORS:
             return BinaryOp(makeAST(ast[0]), makeAST(ast[2]), ast[1])
@@ -287,6 +326,8 @@ asm = "".join([x._eval(env) for x in ast])
 numVars = env.getNumVars()
 asm = "push 0\n" * numVars + asm
 print(asm)
-bytecode = assembler.assemble(asm, ["print:\nout\nret\n"])
+funcasm = env.compileFunctions()
+print("\n".join(funcasm))
+bytecode = assembler.assemble(asm, ["print:\nout\nret\nstr:\nret\n"] + funcasm)
 with open("../test.vm", "wb") as f:
     f.write(bytecode)
