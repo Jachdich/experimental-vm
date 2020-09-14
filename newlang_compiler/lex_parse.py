@@ -25,8 +25,9 @@ code = Forward()
 
 number = Word(nums)
 ident  = Word(alphas + "_", alphanums + "_")
+string = Group(Literal("\"") + (Word("abcdefghijklmnopqrstuvwxyz\\ \n\t4")) + Literal("\""))
 
-term = (Group("(" + expr + ")") | (ident | number))
+term = (Group("(" + expr + ")") | (ident | number | string))
 mulexpr = Forward()
 mulexpr << (Operator("()", expr) | Operator("[]", expr) | Operator("{}", expr) |
             Group(term + (Literal("/") | Literal("*") | Literal("==") + mulexpr)) | term)
@@ -67,8 +68,8 @@ int ree(int a, int b, str c) {
     return str(a + b) + c
 }
 
-print(ree(2, 2, 1))
-
+str x = ree(2, 2, " is 4")
+print(x)
 """)
 
 class Function:
@@ -261,6 +262,19 @@ class Return:
     def __str__(self):
         return self.__repr__()
 
+class String:
+    def __init__(self, value):
+        self.value = value
+
+    def _eval(self, env):
+        return f"push {self.value}\n"
+
+    def __repr__(self):
+        return f"String(\"{self.value}\")"
+
+    def __str__(self):
+        return self.__repr__()
+
 def makeAST(ast):
     if type(ast) == int: return Number(ast)
     if type(ast) == str: return Var(ast)
@@ -271,6 +285,8 @@ def makeAST(ast):
         if ast[0] == "return":
             return Return(makeAST(ast[1]))
     if l == 3:
+        if ast[0] == '"':
+            return String(ast[1])
         if ast[1] in OPERATORS:
             return BinaryOp(makeAST(ast[0]), makeAST(ast[2]), ast[1])
         if ast[0] == "if":
@@ -328,6 +344,60 @@ asm = "push 0\n" * numVars + asm
 print(asm)
 funcasm = env.compileFunctions()
 print("\n".join(funcasm))
-bytecode = assembler.assemble(asm, ["print:\nout\nret\nstr:\nret\n"] + funcasm)
+
+builtins = ["""
+print:
+out
+ret
+
+str:
+dup
+ptype
+dup
+push 0
+cmp
+jz __VALUE_IS_INT
+dup
+push 1
+cmp
+jz __VALUE_IS_DOUBLE
+dup
+push 2
+cmp
+jz __STR_END
+dup
+push 3
+cmp
+jz __VALUE_IS_NONE
+dup
+push 4
+cmp
+jz __VALUE_IS_BOOLEAN
+push "Value could not be converted to string"
+ret
+__VALUE_IS_DOUBLE:
+pop
+doubletostr
+jp __STR_END
+__VALUE_IS_NONE:
+pop
+push "None"
+jp __STR_END
+__VALUE_IS_BOOLEAN:
+pop
+jz __VALUE_IS_TRUE
+push "false"
+jp __STR_END
+__VALUE_IS_TRUE:
+pop
+push "true"
+jp __STR_END
+__VALUE_IS_INT:
+pop
+inttostr
+__STR_END:
+ret
+"""]
+bytecode = assembler.assemble(asm, builtins + funcasm)
 with open("../test.vm", "wb") as f:
     f.write(bytecode)

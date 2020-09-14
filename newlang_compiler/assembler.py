@@ -52,7 +52,7 @@ def assemble(asm, funcasm):
             if args[0].isdigit():
                 constants.append(int(args[0]))
             else:
-                constants.append(args[0])
+                constants.append(" ".join(args))
             code.extend(intToBytes(len(constants) - 1))
         elif opcode == "lstack":
             code.append(5)
@@ -86,6 +86,12 @@ def assemble(asm, funcasm):
         elif opcode == "jnz":
             code.append(16)
             code.append(args[0])
+        elif opcode == "ptype":
+            code.append(17)
+        elif opcode == "inttostr":
+            code.append(18)
+        elif opcode == "doubletostr":
+            code.append(19)
         else:
             code.append(opcode)
 

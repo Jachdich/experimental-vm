@@ -9,9 +9,9 @@ enum DataType {
     INT,
     DOUBLE,
     STRING,
-    FUNCTION,
     NONE,
     BOOLEAN,
+    FUNCTION,
 };
 
 void fatal(std::string msg) {
@@ -33,13 +33,17 @@ enum Opcodes {
     CALL,
     RET,
     HALT,
-    CMP,
+    CMP, //10
     JZ,
     JP,
     POP,
     POP_UNDER,
     DUP,
     JNZ,
+    PTYPE,
+    INTTOSTR,
+    DOUBLETOSTR,
+    
 };
 struct stack_t {
     DataType type;
@@ -80,6 +84,17 @@ struct stack_t {
     stack_t(bool val) {
         boolean = val;
         type = DataType::BOOLEAN;
+    }
+    
+    std::string asString() {
+         switch (type) {
+            case INT: return std::to_string(intval);
+            case DOUBLE: return std::to_string(doubleval);
+            case STRING: return *strptr;
+            case BOOLEAN: return boolean ? "true" : "false";
+            case NONE: return "None";
+            case FUNCTION: return "Function";
+        }
     }
 
     bool asBoolean() {
@@ -190,6 +205,9 @@ public:
             case POP_UNDER: return "POP_UNDER";
             case DUP: return "DUP";
             case JNZ: return "JNZ";
+            case PTYPE: return "PTYPE";
+            case INTTOSTR: return "INTTOSTR";
+            case DOUBLETOSTR: return "DOUBLETOSTR";
             default: return std::to_string((int)opcode);
         }
     }
@@ -263,6 +281,15 @@ public:
                 } else {
                     pc = readUInt32(code, pc);
                 }
+                break;
+               
+            case PTYPE:
+                push((int64_t)(pop().type));
+                break;
+                
+            case INTTOSTR:
+            case DOUBLETOSTR:
+                push(pop().asString());
                 break;
             default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
         }

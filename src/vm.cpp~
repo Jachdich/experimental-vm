@@ -9,9 +9,9 @@ enum DataType {
     INT,
     DOUBLE,
     STRING,
-    FUNCTION,
     NONE,
     BOOLEAN,
+    FUNCTION,
 };
 
 void fatal(std::string msg) {
@@ -33,13 +33,17 @@ enum Opcodes {
     CALL,
     RET,
     HALT,
-    CMP,
+    CMP, //10
     JZ,
     JP,
     POP,
     POP_UNDER,
     DUP,
     JNZ,
+    PTYPE,
+    INTTOSTR,
+    DOUBLETOSTR,
+    
 };
 struct stack_t {
     DataType type;
@@ -81,6 +85,17 @@ struct stack_t {
         boolean = val;
         type = DataType::BOOLEAN;
     }
+    
+    std::string asString() {
+         switch (type) {
+            case INT: return std::to_string(intval);
+            case DOUBLE: return std::to_string(doubleval);
+            case STRING: return *strptr;
+            case BOOLEAN: return boolean ? "true" : "false";
+            case NONE: return "None";
+            case FUNCTION: return "Function";
+        }
+    }
 
     bool asBoolean() {
         if (type == DataType::BOOLEAN) {
@@ -98,7 +113,7 @@ struct stack_t {
         switch (type) {
             case INT: return stack_t(intval == other.intval);
             case DOUBLE: return stack_t(doubleval == other.doubleval);
-            case STRING: return stack_t(*stringptr == *other.stringptr);
+            case STRING: return stack_t(*strptr == *other.strptr);
             case BOOLEAN: return stack_t(boolean = other.boolean);
             case NONE: return stack_t(true); //if they're both None; None == None -> true
             default: return stack_t(false);
@@ -190,6 +205,9 @@ public:
             case POP_UNDER: return "POP_UNDER";
             case DUP: return "DUP";
             case JNZ: return "JNZ";
+            case PTYPE: return "PTYPE";
+            case INTTOSTR: return "INTTOSTR";
+            case DOUBLETOSTR: return "DOUBLETOSTR";
             default: return std::to_string((int)opcode);
         }
     }
@@ -264,6 +282,15 @@ public:
                     pc = readUInt32(code, pc);
                 }
                 break;
+               
+            case PTYPE:
+                push((int64_t)(pop().type));
+                break;
+                
+            case INTTOSTR:
+            case DOUBLETOSTR:
+                push(pop().asString());
+                breakl
             default:   std::cout << "unknown opcode " << (int)instr << "\n"; break;
         }
     }

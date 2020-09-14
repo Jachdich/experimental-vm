@@ -40,6 +40,9 @@ def disassemble(cbytes):
         ("pop_under", 0),
         ("dup", 0),
         ("jnz", 1),
+        ("ptype", 0),
+        ("inttostr", 0),
+        ("doubletostr", 0),
         ]
     codelen = readBytes(cbytes[:4])
     code = cbytes[4:codelen + 4]
