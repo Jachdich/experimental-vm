@@ -16,23 +16,25 @@ def Operator(name, expr):
     if len(name) == 1:
         return None #todo
 
-OPERATORS = ["+", "-", "*", "/", "==", "()", "[]", "{}"]
+OPERATORS = [".", "+", "-", "*", "/", "==", "<", ">", "<=", ">=", "()", "[]", "{}"]
 
 expr = Forward()
 assignment = Forward()
 vardecl = Forward()
 code = Forward()
 
+comment = Literal("//") + restOfLine + LineEnd()
+
 number = Word(nums)
 ident  = Word(alphas + "_", alphanums + "_")
-string = Group(Literal("\"") + (Word("abcdefghijklmnopqrstuvwxyz\\ \n\t4")) + Literal("\""))
+string = Group(Literal("\"") + (Word("abcdefghijklmnopqrstuvwxyz\\ \n\t0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ`¬!£$%^&*()_+-={}[]@~'#:;?/>.<,|")) + Literal("\""))
 
 term = (Group("(" + expr + ")") | (ident | number | string))
 mulexpr = Forward()
 mulexpr << (Operator("()", expr) | Operator("[]", expr) | Operator("{}", expr) |
-            Group(term + (Literal("/") | Literal("*") | Literal("==") + mulexpr)) | term)
+            Group(term + (Literal("/") | Literal("*") | Literal("==") | Literal("<") + mulexpr)) | term)
 
-expr << (Group(mulexpr + OneOrMore(Literal("+") | Literal("-")) + expr) | mulexpr)
+expr << (Group(mulexpr + OneOrMore(Literal("+") | Literal(".") | Literal("-")) + expr) | mulexpr)
 
 tupledef = Group(Optional(Suppress("(")) + expr + OneOrMore(Suppress(",") + expr) + Optional(Suppress(")")))
 
@@ -47,13 +49,14 @@ ifsmt = Group(Literal("if") + expr + Suppress("{") + code + Suppress("}") +\
               Optional(Group(OneOrMore(elifsmt) + Optional(elsesmt)))) + Optional(elsesmt)
 
 
-funcdef = Group(ident.copy().setParseAction(lambda a,b,c: ["def",] + list(c)) + ident + \
-                Suppress("(") + Group(ZeroOrMore(Group(ident + ident + (Suppress(",") | Suppress(")"))))) \
-                + Suppress("{") + code + Suppress("}"))
+funcdef = Group(ident.copy().setParseAction(lambda a,b,c: ["def",] + list(c)) + ident
+                + (Group(Suppress("()")) | (Suppress("(") + Group(ZeroOrMore(Group(ident + ident + (Suppress(",") | Suppress(")")))))))
+                + Suppress("{") + Group(code) + Suppress("}"))
 
 returnsmt = Group(Literal("return") + expr)
-smt = (vardecl | assignment | ifsmt | funcdef | returnsmt | expr)
+smt = (funcdef | vardecl | assignment | ifsmt | returnsmt | expr)
 code << ZeroOrMore(smt)
+code.ignore(comment)
 
 #print(equation.parseString("a b = c(1, 3*3)"))
 
@@ -63,14 +66,8 @@ code << ZeroOrMore(smt)
 
 #print(ree(2, 2, " is 4"))
 #    return str(a * b) + c
-ast = code.parseString("""
-int ree(int a, int b, str c) {
-    return str(a + b) + c
-}
-
-str x = ree(2, 2, " is 4")
-print(x)
-""")
+with open("code.cit", "r") as f:
+    ast = code.parseString(f.read())
 
 class Function:
     def __init__(self, rettype, params, code, name):
@@ -87,7 +84,7 @@ class Function:
         init = self.name + ":\n"
         cleanup = "pop_under\n" * len(self.params) + "ret\n"
         
-        if type(code) == list:
+        if type(self.code) == list:
             return init + "\n".join([x._eval(nenv) for x in self.code]) + cleanup
         else:
             return init + self.code._eval(nenv) + cleanup
@@ -171,8 +168,11 @@ class BinaryOp:
         self.op = op
 
     def _eval(self, env):
-        if self.op in "+-*/==":
+        print(self.op)
+        if self.op in "+-*/==<><=>=":
             return f"{self.lhs._eval(env)}{self.rhs._eval(env)}{self.getOp(self.op)}\n"
+        elif self.op == ".":
+            if self.lhs isinstance Object
         elif self.op == "()":
             params = "".join([x._eval(env) for x in self.rhs])
             return f"{params}call {self.lhs.value} {len(self.rhs)}\n"
@@ -182,7 +182,8 @@ class BinaryOp:
         if op == "-": return "sub"
         if op == "*": return "mul"
         if op == "/": return "div"
-        if op == "==": return "cmp"
+        if op == "==":return "cmp"
+        if op == "<": return "lt"
 
     def __repr__(self):
         return f"BinaryOp({self.lhs} {self.op} {self.rhs})"
@@ -228,7 +229,7 @@ class IfStatement:
         
 
     def __repr__(self):
-        return f"IfStatement({self.expr} ( {self.body} ) )"
+        return f"IfStatement(\n{self.expr} ( \n    {self.body}\n ) )"
 
     def __str__(self):
         return self.__repr__()
@@ -245,7 +246,7 @@ class FuncDefinition:
         return ""
 
     def __repr__(self):
-        return f"FuncDefinition({self.ty} {self.name}({self.args}) {{ {self.code} }} )"
+        return f"FuncDefinition({self.ty} {self.name}({self.args}) {{\n    {self.code}\n}} )"
 
     def __str__(self):
         return self.__repr__()
@@ -276,6 +277,7 @@ class String:
         return self.__repr__()
 
 def makeAST(ast):
+    #print(ast)
     if type(ast) == int: return Number(ast)
     if type(ast) == str: return Var(ast)
     l = len(ast)
@@ -298,7 +300,11 @@ def makeAST(ast):
         if ast[0] == "declare":
             return VarDeclaration(ast[1], ast[2], makeAST(ast[3]))
 
+        if ast[0] == "def":
+            return FuncDefinition(ast[1], ast[2], ast[3], [])
+
     if l == 5:
+        #print("five")
         if ast[0] == "def":
             return FuncDefinition(ast[1], ast[2], ast[3], makeAST(ast[4]))
     #if l >= 0:
@@ -336,7 +342,7 @@ ast = ast.asList()
 
 print(toAtoms(ast))
 ast = makeAST(toAtoms(ast))
-print(ast)
+print("\n".join([str(x) for x in ast]))
 env = Env()
 asm = "".join([x._eval(env) for x in ast])
 numVars = env.getNumVars()
