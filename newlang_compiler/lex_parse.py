@@ -172,7 +172,11 @@ class BinaryOp:
         if self.op in "+-*/==<><=>=":
             return f"{self.lhs._eval(env)}{self.rhs._eval(env)}{self.getOp(self.op)}\n"
         elif self.op == ".":
-            if self.lhs isinstance Object
+            if isinstance(self.lhs, Object):
+                member = self.lhs.getMember(self.rhs.value)
+                return f"
+            else:
+                raise SyntaxError("Primitive type " + str(self.lhs.__class__) + " has no member " + str(self.rhs))
         elif self.op == "()":
             params = "".join([x._eval(env) for x in self.rhs])
             return f"{params}call {self.lhs.value} {len(self.rhs)}\n"
@@ -263,9 +267,10 @@ class Return:
     def __str__(self):
         return self.__repr__()
 
-class String:
+class String(Object):
     def __init__(self, value):
         self.value = value
+        self.members = {"len": Number(3)}
 
     def _eval(self, env):
         return f"push {self.value}\n"
@@ -276,6 +281,13 @@ class String:
     def __str__(self):
         return self.__repr__()
 
+    def getMember(self, name):
+        return self.members[name]
+
+class Object:
+    def __init__(self):
+        pass
+        
 def makeAST(ast):
     #print(ast)
     if type(ast) == int: return Number(ast)
