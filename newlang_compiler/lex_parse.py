@@ -32,7 +32,8 @@ string = Group(Literal("\"") + (Word("abcdefghijklmnopqrstuvwxyz\\ \n\t012345678
 term = (Group("(" + expr + ")") | (ident | number | string))
 mulexpr = Forward()
 mulexpr << (Operator("()", expr) | Operator("[]", expr) | Operator("{}", expr) |
-            Group(term + (Literal("/") | Literal("*") | Literal("==") | Literal("<") + mulexpr)) | term)
+            
+            Group(term + ((Literal("/") | Literal("*") | Literal("==") | Literal("<") | Literal(">") | Literal("<=") | Literal(">=")) + mulexpr)) | term)
 
 expr << (Group(mulexpr + OneOrMore(Literal("+") | Literal(".") | Literal("-")) + expr) | mulexpr)
 
@@ -45,7 +46,7 @@ assignment << Group(ident + Literal("=") + expr)
 elsesmt = (Suppress("else") + Suppress("{") + code + Suppress("}"))
 elifsmt = (Literal("elif").setParseAction(lambda a,b,c: "if") + expr + Suppress("{") + code + Suppress("}"))
 
-ifsmt = Group(Literal("if") + expr + Suppress("{") + code + Suppress("}") +\
+ifsmt = Group(Literal("if") + expr + Suppress("{") + Group(code) + Suppress("}") +\
               Optional(Group(OneOrMore(elifsmt) + Optional(elsesmt)))) + Optional(elsesmt)
 
 
@@ -82,7 +83,10 @@ class Function:
             nenv.malloc(param[1])
 
         init = self.name + ":\n"
-        cleanup = "pop_under\n" * len(self.params) + "ret\n"
+        retlab = nenv.newLabel()
+        nenv.setRetLab(retlab)
+        print(nenv.__hash__())
+        cleanup = retlab + ":\n" + "pop_under\n" * len(self.params) + "ret\n"
         
         if type(self.code) == list:
             return init + "\n".join([x._eval(nenv) for x in self.code]) + cleanup
@@ -102,6 +106,10 @@ class Env:
 
         self.labelval = -1
         self.funcs = {}
+        self.retlab = ""
+
+    def setRetLab(self, retlab):
+        self.retlab = retlab
 
     def defFunc(self, rettype, name, params, code):
         self.funcs[self.getFullFuncName(name, params)] = Function(rettype, params, code, name)
@@ -168,13 +176,13 @@ class BinaryOp:
         self.op = op
 
     def _eval(self, env):
-        print(self.op)
         if self.op in "+-*/==<><=>=":
-            return f"{self.lhs._eval(env)}{self.rhs._eval(env)}{self.getOp(self.op)}\n"
+            #print(self.lhs, self.rhs)
+            return f"{self.rhs._eval(env)}{self.lhs._eval(env)}{self.getOp(self.op)}\n"
         elif self.op == ".":
             if isinstance(self.lhs, Object):
                 member = self.lhs.getMember(self.rhs.value)
-                return f"
+                #return f"
             else:
                 raise SyntaxError("Primitive type " + str(self.lhs.__class__) + " has no member " + str(self.rhs))
         elif self.op == "()":
@@ -188,6 +196,9 @@ class BinaryOp:
         if op == "/": return "div"
         if op == "==":return "cmp"
         if op == "<": return "lt"
+        if op == "<=": return "lte"
+        if op == ">": return "gt"
+        if op == ">=": return "gte"
 
     def __repr__(self):
         return f"BinaryOp({self.lhs} {self.op} {self.rhs})"
@@ -221,13 +232,16 @@ class IfStatement:
         if self.elsesmt == None:
             endlabel = env.newLabel()
             cond = self.expr._eval(env)
-            body = self.body._eval(env)
+            if type(self.body) == list:
+                body = "".join([x._eval(env) for x in self.body])
+            else:
+                body = self.body._eval(env)
             return f"{cond}jnz {endlabel}\n{body}{endlabel}:\n"
         else:
             endlabel = env.newLabel()
             truelabel = env.newLabel()
             cond = self.expr._eval(env)
-            body = self.body._eval(env)
+            body = "".join([x._eval(env) for x in self.body])
             elsesmt = self.elsesmt._eval(env)
             return f"{cond}jz {truelabel}\n{elsesmt}jp {endlabel}\n{truelabel}:\n{body}{endlabel}:\n"
         
@@ -259,13 +273,17 @@ class Return:
     def __init__(self, code):
         self.code = code
     def _eval(self, env):
-        return self.code._eval(env)
+        return self.code._eval(env) + "jp " + env.retlab + "\n"
 
     def __repr__(self):
         return f"Return({self.code})"
 
     def __str__(self):
         return self.__repr__()
+
+class Object:
+    def __init__(self):
+        pass
 
 class String(Object):
     def __init__(self, value):
@@ -284,10 +302,6 @@ class String(Object):
     def getMember(self, name):
         return self.members[name]
 
-class Object:
-    def __init__(self):
-        pass
-        
 def makeAST(ast):
     #print(ast)
     if type(ast) == int: return Number(ast)
@@ -351,7 +365,7 @@ def toAtoms(ast):
     return atom(ast)
 
 ast = ast.asList()
-
+4
 print(toAtoms(ast))
 ast = makeAST(toAtoms(ast))
 print("\n".join([str(x) for x in ast]))
@@ -366,8 +380,11 @@ print("\n".join(funcasm))
 builtins = ["""
 print:
 out
+push \\n
+out
 ret
-
+"""]
+"""
 str:
 dup
 ptype
@@ -415,7 +432,36 @@ pop
 inttostr
 __STR_END:
 ret
-"""]
+"""#]
+
+asm = """
+push 32
+call fib 1
+call print 1
+"""
+
+funcasm = ["""
+fib:
+dup
+push 1
+lte
+jnz lab_1
+push 1
+pop_under
+ret
+lab_1:
+push 2
+lstack 0
+sub
+call fib 1
+push 1
+lstack 0
+sub
+call fib 1
+add
+pop_under
+ret
+""",]
 bytecode = assembler.assemble(asm, builtins + funcasm)
 with open("../test.vm", "wb") as f:
     f.write(bytecode)

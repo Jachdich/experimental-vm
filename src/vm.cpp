@@ -43,7 +43,10 @@ enum Opcodes {
     PTYPE,
     INTTOSTR,
     DOUBLETOSTR,
-    
+    GT,
+    GTE,
+    LT,
+    LTE,
 };
 struct stack_t {
     DataType type;
@@ -116,6 +119,42 @@ struct stack_t {
             case STRING: return stack_t(*strptr == *other.strptr);
             case BOOLEAN: return stack_t(boolean = other.boolean);
             case NONE: return stack_t(true); //if they're both None; None == None -> true
+            default: return stack_t(false);
+        }
+    }
+    
+    stack_t operator<(const stack_t& other) {
+        if (this->type != other.type) return stack_t(false);
+        switch (type) {
+            case INT: return stack_t(other.intval < intval); //TODO all like this?
+            case DOUBLE: return stack_t(doubleval < other.doubleval);
+            default: return stack_t(false);
+        }
+    }
+    
+    stack_t operator>(const stack_t& other) {
+        if (this->type != other.type) return stack_t(false);
+        switch (type) {
+            case INT: return stack_t(intval > other.intval);
+            case DOUBLE: return stack_t(doubleval > other.doubleval);
+            default: return stack_t(false);
+        }
+    }
+    
+    stack_t operator<=(const stack_t& other) {
+        if (this->type != other.type) return stack_t(false);
+        switch (type) {
+            case INT: return stack_t(intval <= other.intval);
+            case DOUBLE: return stack_t(doubleval <= other.doubleval);
+            default: return stack_t(false);
+        }
+    }
+    
+    stack_t operator>=(const stack_t& other) {
+        if (this->type != other.type) return stack_t(false);
+        switch (type) {
+            case INT: return stack_t(intval >= other.intval);
+            case DOUBLE: return stack_t(doubleval >= other.doubleval);
             default: return stack_t(false);
         }
     }
@@ -208,6 +247,10 @@ public:
             case PTYPE: return "PTYPE";
             case INTTOSTR: return "INTTOSTR";
             case DOUBLETOSTR: return "DOUBLETOSTR";
+            case GT: return "GT";
+            case GTE: return "GTE";
+            case LT: return "LT";
+            case LTE: return "LTE";
             default: return std::to_string((int)opcode);
         }
     }
@@ -233,7 +276,7 @@ public:
             case OUT: std::cout << pop(); break;
             case PUSH: push(constants[readUInt32(code, pc)]); pc += 4; break;
             case LSTACK:
-                push(stack[bp + readUInt32(code, pc)].copy());
+                push(stack[bp + readUInt32(code, pc)]);
                 pc += 4;
                 break;
             case SSTACK:
@@ -253,6 +296,10 @@ public:
                 break;
             case HALT: running = false; break;
             case CMP:  push(pop() == pop()); break;
+            case GT: push(pop() > pop()); break;
+            case GTE: push(pop() >= pop()); break;
+            case LT: push(pop() < pop()); break;
+            case LTE: push(pop() <= pop()); break;
             case JZ: {
                 if (pop().asBoolean()) {
                     pc = readUInt32(code, pc);

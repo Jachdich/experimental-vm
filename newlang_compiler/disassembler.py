@@ -43,6 +43,10 @@ def disassemble(cbytes):
         ("ptype", 0),
         ("inttostr", 0),
         ("doubletostr", 0),
+        ("gt", 0),
+        ("gte", 0),
+        ("lt", 0),
+        ("lte", 0),
         ]
     codelen = readBytes(cbytes[:4])
     code = cbytes[4:codelen + 4]
@@ -76,7 +80,7 @@ def disassemble(cbytes):
         
     return out
 
-with open("../test.vm", "rb") as f:
+with open("test.vm", "rb") as f:
     cbytes = bytearray(f.read())
 
 print(disassemble(cbytes))

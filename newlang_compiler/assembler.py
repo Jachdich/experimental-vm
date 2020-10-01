@@ -92,6 +92,14 @@ def assemble(asm, funcasm):
             code.append(18)
         elif opcode == "doubletostr":
             code.append(19)
+        elif opcode == "gt":
+            code.append(20)
+        elif opcode == "gte":
+            code.append(21)
+        elif opcode == "lt":
+            code.append(22)
+        elif opcode == "lte":
+            code.append(23)
         else:
             code.append(opcode)
 
