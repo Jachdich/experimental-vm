@@ -8,6 +8,17 @@ import assembler, sys
 ##print(expr.parseString("1 * 3 + 4 + 3 * 3 + 4 * 4 + 1 + 1 + 1 + 1"))
 ##sys.exit(0)
 
+"""
+arrstart:    push 3
+             push 0
+             push 1
+             push 2
+
+size = 
+
+
+"""
+
 def Operator(name, expr):
     if len(name) == 2:
         return Group(ident + Literal(name[0]).setParseAction(lambda a,b,c: name) \
