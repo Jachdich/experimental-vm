@@ -2,6 +2,36 @@
 #from assembler import assembler, definition_stackvm
 import re, sys
 
+header = """global    _start
+section   .text
+_start:
+mov rdx, rsp
+"""
+
+print_asm = """
+print:
+mov rax, 1
+mov rdi, 1
+mov rdx, 1
+syscall
+;add rsi, 8
+;mov rax, [rsi]
+;cmp rax, 0
+;jnz print
+ret
+
+
+
+"""
+
+footer = """
+mov rax, 60
+xor rdi, rdi
+syscall
+"""
+
+definitions = "section .data\n"
+
 def error(desc):
     sys.stderr.write(desc + "\n")
     sys.exit(1)
@@ -146,14 +176,14 @@ def doEscapes(x):
 class Compiler:
     def __init__(self, code):
         self.func = {
-        "+": "add",
-        "-": "sub",
-        "==": "cmp",
+        "+": "pop rax\npop rbx\nadd rax, rbx\npush rax",
+        "-": "pop rax\npop rbx\nsub rax, rbx\npush rax",
+        "==": "pop rax\npop rbx\ncmp rax, rbx",
         "<": "lt",
         ">": "gt",
         "<=": "lteq",
         ">=": "gteq",
-        "print": "out",
+        "print": "mov rsi, rsp\ncall print\nadd rsp, 8"#"pop rsi\ncall print",
         }
 
         self.global_vars = []
@@ -174,14 +204,24 @@ class Compiler:
                 out.append(asm)
             return out
         elif type(ast) == int:
-            return "push " + str(ast)
+            return "mov rax, " + str(ast) + "\npush rax"
+            #lab = self.genNewLabel()
+            #global definitions
+            #definitions += lab + ": db " + str(ast)
+            #return "push " + lab
         elif type(ast) == str and ast[0] == "\"":
-            return "push " + ast[1:-1] #todo
+            lab = self.genNewLabel()
+            global definitions
+            definitions += lab + ": db " + ast + ", 0"
+            #definitions += ""
+            return "push " + lab
+            
         elif type(ast) == str:
             if ast in varmaps:
                 if isinstance(varmaps[ast], Function):
-                    return "call " + varmaps[ast].value + " " + str(varmaps[ast].args)
-                return "lstack " + str(varmaps[ast])
+                    return "push rdx\nmov rdx, rsp\ncall " + varmaps[ast].value + "\nadd rsp, " + str(8 * varmaps[ast].args)
+                return "mov rax, rdx\nadd rax, " + str(8  * (varmaps[ast] + 1)) + "\nmov rax, [rax]\npush rax"
+                #return "lstack " + str(varmaps[ast])
             else:
                 try:
                     return self.func[ast]
@@ -251,119 +291,10 @@ class Compiler:
         compiled_funcs = []
         for func in self.funcasm:
             asm, varmaps = self.genCode(func.code, {**varmaps, **func.varmaps})
-            compiled_funcs.append(func.value + ":\n" + asm + "\n" + "pop_under\n" * func.args + "ret")
+            compiled_funcs.append(func.value + ":\n" + asm + "\nret\n")
             
         return out, compiled_funcs
 
-def assemble(asm, funcasm):
-    asm += "\nhalt\n"
-    asm += "\n".join(funcasm)
-    constants = []
-    code = []
-    for line in asm.split("\n"):
-        if line.strip() == "": continue
-        parts = line.split(" ")
-        opcode = parts[0]
-        if len(parts) > 1:
-            args = parts[1:]
-        else:
-            args = []
-
-        if opcode == "nop":
-            code.append(0)
-        elif opcode == "add":
-            code.append(1)
-        elif opcode == "sub":
-            code.append(2)
-        elif opcode == "out":
-            code.append(3)
-        elif opcode == "push":
-            code.append(4)
-            if args[0].isdigit():
-                constants.append(int(args[0]))
-            else:
-                constants.append(args[0])
-            code.extend(intToBytes(len(constants) - 1))
-        elif opcode == "lstack":
-            code.append(5)
-            code.extend(intToBytes(int(args[0])))
-        elif opcode == "sstack":
-            code.append(6)
-            code.extend(intToBytes(int(args[0])))
-        elif opcode == "call":
-            code.append(7)
-            code.extend(intToBytes(int(args[1])))
-            code.append(args[0])
-        elif opcode == "ret":
-            code.append(8)
-    
-        elif opcode == "halt":
-            code.append(9)
-        elif opcode == "cmp":
-            code.append(10)
-        elif opcode == "jz":
-            code.append(11)
-            code.append(args[0])
-        elif opcode == "jp":
-            code.append(12)
-            code.append(args[0])
-        elif opcode == "pop":
-            code.append(13)
-        elif opcode == "pop_under":
-            code.append(14)
-        elif opcode == "dup":
-            code.append(15)
-        else:
-            code.append(opcode)
-
-    jumps = {}
-    i = 0
-
-    a = code[:]
-    code = []
-    for c in a:
-        if type(c) == str and c.endswith(":"):
-            jumps[c[:-1]] = i
-        elif type(c) == str:
-            code.append(c)
-            i += 4
-        else:
-            code.append(c)
-            i += 1
-
-    a = code[:]
-    code = []
-    for x in a:
-        if type(x) == str:
-            code.extend(intToBytes(jumps[x]))
-        else:
-            code.append(x)
-
-    f = bytearray()
-    
-    codelen = intToBytes(len(code))
-    f += bytearray(codelen)
-    for x in code:
-        f += bytearray([x,])
-
-    #datalen = intToBytes(len(constants) * 9)
-    #f += bytearray(datalen)
-
-    consts = bytearray()
-    for x in constants:
-        if type(x) == int:
-            consts += bytearray([0, 0, 0, 0, 4])
-            consts += bytearray(intToBytes(x))
-        elif type(x) == str:
-            x = doEscapes(x)
-            consts += bytearray([2,])
-            consts += bytearray(intToBytes(len(x)))
-            for c in x:
-                consts += bytearray([ord(c),])
-
-    f += bytearray(intToBytes(len(consts)))
-    f += consts
-    return f
                 
         #asmbler = assembler.Assembler(asm, definition_stackvm)
         #return asmbler.assemble()
@@ -376,7 +307,19 @@ def assemble(asm, funcasm):
 #with open("test.vm", "wb") as f:
 #    f.write(assemble(asm, funcasm))
 
+#src = """(def fib (fn (n) (if (== n 0) (1) (if (== n (- 0 1)) (1) (+ (fib (- n 1)) (fib (- n 2)))))))
+#(print (fib 20))
+#"""
+src = """(def ree (fn (a b) (if (== b 0) (print a) (print b))))
+(ree 65 66)"""
 
+#src = """(if (== 1 2) (print 65) (print 66))"""
+
+c = Compiler(src)
+asm, funcasm = c.compileCode()
+print(header + asm + footer + print_asm + "\n\n".join(funcasm) + definitions)
+
+"""
 infile = sys.argv[1]
 out = sys.argv[2]
 
@@ -391,4 +334,4 @@ print("\n\n\n".join(funcasm))
 assembled_bytes = assemble(asm, funcasm)
 with open(out, "wb") as f:
     f.write(assembled_bytes)
-
+"""
