@@ -1,11 +1,30 @@
-//#include <iostream>
+#include <iostream>
 //NO MORE STD LIB OK??
-#include <cstdlib>
-typedef unsigned int uint32_t;
 enum class ErrorCode {
     OK,
     NOT_FOUND,
 };
+
+uint32_t strlen(const char * data) {
+    uint32_t sz = 0;
+    while (data[sz] != 0) sz++;
+    return sz;
+}
+
+void strcpy(const char * a, char * b) {
+    char ch;
+    uint32_t pos = 0;
+    while ((ch = a[pos]) != 0) {
+        b[pos] = ch;
+        pos++;
+    }
+}
+
+void memcpy(void * from, void * to, uint32_t size) {
+    for (uint32_t i = 0; i < size; i++) {
+    	((char*)to)[i] = ((char*)from)[i];
+    }
+}
 
 template<class T>
 class Vector {
@@ -23,6 +42,13 @@ public:
         cont = (T*)malloc(2 * sizeof(T));
         capacity = 2;
         size = 0;
+    }
+
+    Vector(const Vector<T> &other) {
+    	cont = (T*)malloc(other.capacity);
+    	capacity = other.capacity;
+    	size = other.size;
+    	memcpy(other.cont, cont, other.size);
     }
 
     ~Vector() {
@@ -81,30 +107,11 @@ public:
     }
 
     void extend(Map<K, V>& other) {
-        for (int i = 0; i < other.cont.size; i++) {
+        for (uint32_t i = 0; i < other.cont.size; i++) {
             this->cont.push_back(other.cont[i]);
         }
     }
 };
-
-uint32_t strlen(const char * data) {
-    uint32_t sz = 0;
-    while (data[sz] != 0) sz++;
-    return sz;
-}
-
-void strcpy(const char * a, char * b) {
-    char ch;
-    uint32_t pos = 0;
-    while ((ch = a[pos]) != 0) {
-        b[pos] = ch;
-        pos++;
-    }
-}
-
-void memcpy(void * from, void * to, uint32_t size) {
-    
-}
 
 class String {
 public:
@@ -167,10 +174,10 @@ String operator+(const char * a, String& b) {
 }
 
 //DEBUG
-//std::ostream& operator<<(std::ostream& a, String b) { return a << b.cont; }
+std::ostream& operator<<(std::ostream& a, String b) { return a << b.cont; }
 
 void CALError(String message) {
-//    std::cout << "Error " << message << "\n";
+    std::cout << "Error " << message << "\n";
 }
 
 class Env {
@@ -189,6 +196,7 @@ public:
         if (ec != ErrorCode::OK) {
             CALError("Variable " + key + " was not found");
         }
+        return v;
     }
 };
 
