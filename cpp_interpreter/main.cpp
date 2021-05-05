@@ -18,24 +18,22 @@ char *strcpy(const char * from, char * to) {
     return to;
 }
 
-void *memcpy(void * from, void * to, uint32_t size) {
+void *memcpy(const void * from, void * to, uint32_t size) {
     for (uint32_t i = 0; i < size; i++) ((char*)to)[i] = ((char*)from)[i];
     return to;
 }
 
 //WHAT IS THIS???
 // returns true if X and Y are same
-int compare(const char *X, const char *Y)
-{
-    while (*X && *Y)
-    {
+int compare(const char *X, const char *Y) {
+    while (*X && *Y) {
         if (*X != *Y)
             return 0;
- 
+
         X++;
         Y++;
     }
- 
+
     return (*Y == '\0');
 }
  
@@ -72,10 +70,11 @@ public:
     	cont = new T[other.capacity];
     	capacity = other.capacity;
     	size = other.size;
-    	memcpy(other.cont, cont, other.size);
+    	for (uint32_t i = 0; i < size; i++) {
+    	    cont[i] = T(other.cont[i]);
+    	}
     }
 
-    
     Vector<T> operator=(const Vector<T> &other) {
         capacity = other.capacity;
         size = other.size;
@@ -112,11 +111,17 @@ public:
         if (size == 0) {
             return T();
         }
-        return cont[size--];
+        T a = cont[--size];
+        cont[size].~T();
+        return a;
     }
 
     T& operator[](uint32_t pos) {
         return cont[pos];
+    }
+
+    T *ptr(uint32_t pos) {
+        return (cont + pos);
     }
 };
 
@@ -168,6 +173,11 @@ public:
     }
 };
 
+class String;
+class CALType;
+
+String operator+(const String& lhs, const String& rhs);
+
 class String {
 public:
     char * cont;
@@ -176,11 +186,17 @@ public:
         size = 0;
         cont = nullptr;
     }
+
+    String(const char data) {
+        size = 1;
+        cont = new char[1];
+        cont[0] = data;
+    }
     
     String(const char * data) {
         size = strlen(data);
         cont = new char[size];
-        strcpy(data, cont);
+        memcpy(data, cont, size);
     }
 
     String(char * data, uint32_t len) {
@@ -297,36 +313,46 @@ public:
         }
         return val;
     }
+
+    String operator+=(const String& b) {
+        char *nstr = new char[size + b.size];
+        memcpy(cont, nstr, size);
+        memcpy(b.cont, nstr + size, b.size);
+        delete[] cont;
+        cont = nstr;
+        size = size + b.size;
+        return *this;
+    }
+
+    String operator+=(const CALType& type);
 };
 
 String operator+(const String& lhs, const String& rhs) {
     char *temp = new char[rhs.size + lhs.size];
-    strcpy(lhs.cont, temp);
-    strcpy(rhs.cont, temp + lhs.size);
-    String res = String(temp);
+    memcpy(lhs.cont, temp, lhs.size);
+    memcpy(rhs.cont, temp + lhs.size, rhs.size);
+    String res = String(temp, lhs.size + rhs.size);
     delete[] temp;
     return res;
 }
 
 String operator+(const String& a, const char * other) {
     char *temp = new char[strlen(other) + a.size];
-    strcpy(a.cont, temp);
+    memcpy(a.cont, temp, a.size);
     strcpy(other, temp + a.size);
-    String res = String(temp);
+    String res = String(temp, strlen(other) + a.size);
     delete[] temp;
     return res;
 }
 
 String operator+(const char * a, const String& b) {
     char *temp = new char[strlen(a) + b.size];
-    strcpy(b.cont, temp + b.size);
+    memcpy(b.cont, temp + strlen(a), b.size);
     strcpy(a, temp);
-    String res = String(temp);
+    String res = String(temp, strlen(a) + b.size);
     delete[] temp;
     return res;
 }
-
-//DEBUG
 
 std::ostream& operator<<(std::ostream& a, String b) {
     for (uint32_t i = 0; i < b.size; i++) {
@@ -335,85 +361,90 @@ std::ostream& operator<<(std::ostream& a, String b) {
     return a;
 }
 
+template<class A, class B>
+std::ostream& operator<<(std::ostream& a, Pair<A, B> b) { return a; }
+
+String operator*(const String& a, int b) {
+    if (b == 0) { return String(""); }
+    char *buf = new char[a.size * b];
+    for (int i = 0; i < b; i++) {
+        memcpy(a.cont, buf + i * a.size, a.size);
+    }
+    String e(buf, a.size * b);
+    delete[] buf;
+    return e;
+}
+
 void CALError(String message) {
     std::cout << "Error " << message << "\n";
 }
 
-class Env {
-public:
-    Map<String, uint32_t> map;
-    Env *outer = nullptr;
-    
-    Env(Env *outer, Map<String, uint32_t> binds) {
-        this->outer = outer;
-        map.extend(binds);
-    }
-    Env(Env *outer) {
-        this->outer = outer;
-    }
-    Env(Map<String, uint32_t> binds) {
-        map.extend(binds);
-    }
-    Env() {}
-
-    uint32_t get(String key) {
-        Env *env = find(key);
-        if (env == nullptr) {
-            CALError("Variable " + key + " was not found");
-            return -1;
-        }
-        ErrorCode ec;
-        uint32_t v = env->map.get(key, ec);
-        if (ec != ErrorCode::OK) {
-            CALError("Variable " + key + " was not found");
-            return -1;
-        }
-        return v;
-    }
-
-    void put(String key, uint32_t value) {
-        map.put(key, value);
-    }
-
-    Env *find(String key) {
-        ErrorCode ec;
-        map.get(key, ec);
-        if (ec == ErrorCode::OK) {
-            return this;
-        } else {
-            if (outer != nullptr) {
-                return outer->find(key);
-            }
-        }
-        return nullptr;
-    }
-};
-
 enum class CALTypeEnum {
     INT,
     SYM,
+    CODE,
+    NONE,
+};
+
+class AST;
+
+struct Function {
+    AST * ast;
+    Vector<String> binds;
 };
 
 class CALType {
 public:
     int32_t i;
     String sym;
+    Function code;
     CALTypeEnum type;
+
+    CALType(String n) {
+        sym = n;
+        type = CALTypeEnum::SYM;
+    }
+
+    CALType(int32_t n) {
+        i = n;
+        type = CALTypeEnum::INT;
+    }
+
+    CALType() {
+        type = CALTypeEnum::NONE;
+    }
+
+    CALType(Function code) {
+        this->code = code;
+        type = CALTypeEnum::CODE;
+    }
+    
 };
+
+String String::operator+=(const CALType& type) {
+    String b = "";
+    switch (type.type) {
+        case CALTypeEnum::SYM: b = type.sym; break;
+        case CALTypeEnum::INT: b = '0' + type.i; break;
+        case CALTypeEnum::CODE: b = "code"; break;
+        default: b = "ab"; break;
+    }
+
+    return (*this) += b;
+}
+
+
+//DEBUG
+std::ostream& operator<<(std::ostream& a, CALType b);
 
 class AST {
 public:
     Vector<AST> nodes;
-    String sdata;
-    int idata;
-
-    AST(int value) {
-        idata = value;
-    }
-
-    AST(String value) {
-        sdata = value;
-    }
+    CALType val;
+    
+    AST(int32_t value) : val(value) {}
+    AST(String value)  : val(value) {}
+    AST(CALType value) : val(value) {}
 
     AST(Vector<AST> nodes) {
         this->nodes = nodes;
@@ -431,14 +462,122 @@ public:
         nodes.push_back(AST(value));
     }
 
+    void append(CALType value) {
+        nodes.push_back(AST(value));
+    }
+
     AST() {
+    }
+
+    void print(int indent) {
+        std::cout << String(" ") * indent << val << "\n";
+        for (uint32_t i = 0; i < nodes.size; i++) {
+            nodes[i].print(indent + 4);
+        }
+    }
+
+    String toString() {
+        String out = "";
+        if (val.type != CALTypeEnum::NONE) {
+            out += val;//String((char)((int)val.type + '0'));
+        }
+
+        if (nodes.size > 0) {
+            out += " (";
+            for (uint32_t i = 0; i < nodes.size; i++) {
+                out += nodes[i].toString();
+                out += " ";
+            }
+            out += ")";
+        }
+        return out;
+    }
+
+    AST operator[](uint32_t n) {
+        return nodes[n];
+    }
+
+    AST* ptr(uint32_t n) {
+        return nodes.ptr(n);
+    }
+};
+std::ostream& operator<<(std::ostream& a, AST b) { return a; }
+
+//DEBUG
+std::ostream& operator<<(std::ostream& a, CALType b) {
+    switch (b.type) {
+        case CALTypeEnum::INT: return a << b.i;
+        case CALTypeEnum::SYM: return a << b.sym;
+        case CALTypeEnum::NONE: return a << "NONE";
+        case CALTypeEnum::CODE: {
+            a << "function(";
+            for (uint32_t i = 0; i < b.code.binds.size; i++) {
+                a << b.code.binds[i];
+                if (i != b.code.binds.size - 1) {
+                    a << ", ";
+                }
+            }
+            a << ") -> " << b.code.ast->toString();
+            return a;
+        }
+        default: return a;
+    }
+}
+
+class Env {
+public:
+    Map<String, AST> map;
+    Env *outer = nullptr;
+    
+    Env(Env *outer, Map<String, AST> binds) {
+        this->outer = outer;
+        map.extend(binds);
+    }
+    Env(Env *outer) {
+        this->outer = outer;
+    }
+    Env(Map<String, AST> binds) {
+        map.extend(binds);
+    }
+    Env() {}
+
+    AST get(String key) {
+        Env *env = find(key);
+        if (env == nullptr) {
+            CALError("Variable " + key + " was not found");
+            return AST();
+        }
+        ErrorCode ec;
+        AST v = env->map.get(key, ec);
+        if (ec != ErrorCode::OK) {
+            CALError("Variable " + key + " was not found");
+            return AST();
+        }
+        return v;
+    }
+
+    void put(String key, AST value) {
+        map.put(key, value);
+    }
+
+    Env *find(String key) {
+        ErrorCode ec;
+        map.get(key, ec);
+        if (ec == ErrorCode::OK) {
+            return this;
+        } else {
+            if (outer != nullptr) {
+                return outer->find(key);
+            }
+        }
+        return nullptr;
     }
 };
 
 class Reader {
 public:
     String source;
-    uint32_t pos;
+    uint32_t pos = 0;
     Vector<String> tokens;
     Reader(String source) {
         this->source = source;
@@ -454,14 +593,13 @@ public:
 
     void tokenise() {
         tokens = source.replace("(", " ( ").replace(")", " ) ").split(" ");
-        //std::cout << source.replace("(", " ( ").replace(")", " ) ") << "\n";
     }
 
     CALType atom(String token) {
         if (token.isDigit()) {
-            return CALType{(int32_t)token.toInt(), "", CALTypeEnum::INT};
+            return CALType((int32_t)token.toInt());
         } else {
-            return CALType{0, token, CALTypeEnum::SYM};
+            return CALType(token);
         }
     }
 
@@ -504,12 +642,92 @@ AST parse(Reader reader) {
             }
             inside_param.pop_back();
             out.append(parse(Reader(inside_param)));
+        } else if (reader.peek() != ")") {
+            out.append(reader.atom(reader.next()));
+        } else {
+            reader.next();
         }
+    }
+
+    return out;
+}
+
+AST evaluate(AST ast, Env env);
+AST eval_ast(AST ast, Env env);
+
+AST eval_operator(AST ast, Env env) {
+    if (ast[0].val.type == CALTypeEnum::INT) {
+        switch (ast[0].val.i) {
+            case '+':
+                return ast[1].val.i + ast[2].val.i;
+            case '-':
+                return ast[1].val.i - ast[2].val.i;
+            case '*':
+                return ast[1].val.i * ast[2].val.i;
+            case '/':
+                return ast[1].val.i / ast[2].val.i;
+            default: return AST();
+        }
+    } else if (ast[0].val.type == CALTypeEnum::CODE) {
+        Map<String, AST> binds;
+        for (uint32_t i = 0; i < ast[0].val.code.binds.size; i++) {
+            binds.put(ast[0].val.code.binds[i], ast[i + 1]);
+        }
+        Env newenv(&env, binds);
+        ast[0].val.code.ast->print(0);
+        AST ret = evaluate(*ast[0].val.code.ast, newenv);
+        std::cout << "AST EVALUATE THING\n";
+        ret.print(0);
+        std::cout << "AST EVALUATE THING END\n";
+        return ret;
     }
 }
 
+AST eval_ast(AST ast, Env env) {
+    if (ast.val.type == CALTypeEnum::SYM) {
+        AST e = env.get(ast.val.sym);
+    }
+    if (ast.nodes.size > 0) {
+        AST out;
+        for (uint32_t i = 0; i < ast.nodes.size; i++) {
+            out.append(evaluate(ast[i], env));
+        }
+        return out;
+    }
+    return ast;
+}
+
+AST evaluate(AST ast, Env env) {
+    if (ast.nodes.size > 0) {
+        if (ast[0].val.type == CALTypeEnum::SYM && ast[0].val.sym == "fn") {
+            Vector<String> vec;
+            for (uint32_t i = 0; i < ast[1].nodes.size; i++) {
+                vec.push_back(ast[1].nodes[i].val.sym);
+            }
+            return AST(Function{new AST(ast[2]), vec});
+        } else {
+            AST x = eval_ast(ast, env);
+            //x.print(0);
+            return eval_operator(x, env);
+        }
+    } else {
+        return eval_ast(ast, env);
+    }
+}
+
+
 int main() {
     //std::cout << String("(a (b c (d e f g))(h i))").replace("(", " ( ").replace(")", " ) ") << "\n";
-    Reader a("(a (b c (d e f g))(h i))");
-    //std::cout << a.next() << " " << a.next() << "\n";
+    Reader reader("((fn (a b) (+ a b)) 1 2)");
+    Env env;
+    env.put("+", AST((int)'+'));
+    env.put("-", AST((int)'-'));
+    env.put("*", AST((int)'*'));
+    env.put("/", AST((int)'/'));
+    AST ast = parse(reader);
+    ast.print(0);
+    std::cout << "\n\n\n";
+    AST res = evaluate(ast, env);
+    //res.print(0);
+    return 0;
 }

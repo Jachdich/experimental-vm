@@ -1,0 +1,2 @@
+(def print_n (fn (str, n) (if (== n 0) (0) ((print str) (print_n str (- n 1))))))
+(print_n "hello" 5)
