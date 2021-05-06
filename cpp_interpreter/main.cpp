@@ -116,11 +116,15 @@ public:
         return a;
     }
 
-    T& operator[](uint32_t pos) {
+    const T& get(uint32_t pos) const {
         return cont[pos];
     }
 
-    T *ptr(uint32_t pos) {
+    T& operator[](uint32_t pos) const {
+        return cont[pos];
+    }
+    
+    T *ptr(uint32_t pos) const {
         return (cont + pos);
     }
 };
@@ -145,7 +149,7 @@ public:
         
     }
     
-    void put(K key, V value) {
+    void put(const K &key, const V &value) {
         for (uint32_t i = 0; i < cont.size; i++) {
             if (cont[i].a == key) {
                 cont[i].b = value;
@@ -155,7 +159,7 @@ public:
         cont.push_back(Pair<K, V>(key, value));
     }
     
-    V get(K key, ErrorCode& code) {
+    const V& get(K key, ErrorCode& code) const {
         for (uint32_t i = 0; i < cont.size; i++) {
             if (cont[i].a == key) {
                 code = ErrorCode::OK;
@@ -220,7 +224,7 @@ public:
         return *this;
     }
 
-    bool operator==(const String& other) {
+    bool operator==(const String& other) const {
         if (cont == nullptr || other.cont == nullptr) return false;
         if (this->size != other.size) return false;
         for (uint32_t i = 0; i < this->size; i++) {
@@ -229,7 +233,7 @@ public:
         return true;
     }
 
-    bool operator!=(const String& other) {
+    bool operator!=(const String& other) const {
         return !(*this == other);
     }
     
@@ -239,7 +243,7 @@ public:
         }
     }
 
-    String replace(String rep, String with) {
+    String replace(const String &rep, const String &with) {
         char *orig = new char[size + 1];
         char *orig_start = orig;
         memcpy(cont, orig, size);
@@ -254,25 +258,31 @@ public:
         
         if (!size || !rep.size) return String("");
         if (rep.size == 0) return String("");
-        if (!with.size)
-            with = "";
+        //if (!with.size)
+        //    with = "";
+
+        char *rep_null = new char[rep.size + 1];
+        memcpy(rep.cont, rep_null, rep.size);
+        rep_null[rep.size] = 0;
     
         ins = orig;
-        for (count = 0; (tmp = strstr(ins, rep.cont)); ++count) {
+        for (count = 0; (tmp = strstr(ins, rep_null)); ++count) {
             ins = tmp + rep.size;
         }
-    
-        tmp = result = new char[size + (with.size - rep.size) * count + 1];
 
+        size_t total_count = size + (with.size - rep.size) * count;
+        tmp = result = new char[total_count + 1];
+        
         while (count--) {
-            ins = strstr(orig, rep.cont);
+            ins = strstr(orig, rep_null);
             len_front = ins - orig;
             tmp = /*strncpy*/(char*)memcpy(orig, tmp, len_front) + len_front;
-            tmp = strcpy(with.cont, tmp) + with.size;
+            tmp = /*strcpy*/ (char*)memcpy(with.cont, tmp, with.size) + with.size;
             orig += len_front + rep.size;
         }
         strcpy(orig, tmp);
-        String res(result);
+        //*tmp = 0;
+        String res(result, total_count);
         delete[] orig_start;
         delete[] result;
         return res;
@@ -391,6 +401,10 @@ class AST;
 struct Function {
     AST * ast;
     Vector<String> binds;
+    bool operator==(const Function &other) const {
+
+        return false; //lol I cba
+    }
 };
 
 class CALType {
@@ -418,7 +432,18 @@ public:
         this->code = code;
         type = CALTypeEnum::CODE;
     }
-    
+    bool operator==(const CALType &other) const {
+        if (this->type != other.type) return false;
+        switch (type) {
+            case CALTypeEnum::SYM: return sym == other.sym;
+            case CALTypeEnum::INT: return i == other.i;
+            case CALTypeEnum::CODE: return code == other.code;
+            case CALTypeEnum::NONE: return true;
+        }
+        return false;
+        //STFU compiler, I handled all my cases!
+    }
+
 };
 
 String String::operator+=(const CALType& type) {
@@ -476,7 +501,7 @@ public:
         }
     }
 
-    String toString() {
+    String toString() const {
         String out = "";
         if (val.type != CALTypeEnum::NONE) {
             out += val;//String((char)((int)val.type + '0'));
@@ -493,11 +518,15 @@ public:
         return out;
     }
 
-    AST operator[](uint32_t n) {
+    const AST& get(uint32_t n) const {
+        return nodes.get(n);
+    }
+
+    AST& operator[](uint32_t n) const {
         return nodes[n];
     }
 
-    AST* ptr(uint32_t n) {
+    AST* ptr(uint32_t n) const {
         return nodes.ptr(n);
     }
 };
@@ -527,9 +556,9 @@ std::ostream& operator<<(std::ostream& a, CALType b) {
 class Env {
 public:
     Map<String, AST> map;
-    Env *outer = nullptr;
+    const Env *outer = nullptr;
     
-    Env(Env *outer, Map<String, AST> binds) {
+    Env(const Env *outer, Map<String, AST> binds) {
         this->outer = outer;
         map.extend(binds);
     }
@@ -541,26 +570,26 @@ public:
     }
     Env() {}
 
-    AST get(String key) {
-        Env *env = find(key);
+    const AST& get(String key) const {
+        const Env *env = find(key);
         if (env == nullptr) {
             CALError("Variable " + key + " was not found");
-            return AST();
+            return *(AST*)(0x0); //LMAO get fuckin rekt
         }
         ErrorCode ec;
-        AST v = env->map.get(key, ec);
+        const AST &v = env->map.get(key, ec);
         if (ec != ErrorCode::OK) {
             CALError("Variable " + key + " was not found");
-            return AST();
+            return *(AST*)(0x0);
         }
         return v;
     }
 
-    void put(String key, AST value) {
+    void put(const String &key, const AST &value) {
         map.put(key, value);
     }
 
-    Env *find(String key) {
+    const Env *find(String key) const {
         ErrorCode ec;
         map.get(key, ec);
         if (ec == ErrorCode::OK) {
@@ -652,20 +681,22 @@ AST parse(Reader reader) {
     return out;
 }
 
-AST evaluate(AST ast, Env env);
-AST eval_ast(AST ast, Env env);
+AST evaluate(const AST &ast, Env *env);
+AST eval_ast(const AST &ast, Env *env);
 
-AST eval_operator(AST ast, Env env) {
-    if (ast[0].val.type == CALTypeEnum::INT) {
-        switch (ast[0].val.i) {
+AST eval_operator(const AST &ast, Env *env) {
+    if (ast[0].val.type == CALTypeEnum::SYM) {
+        switch (ast[0].val.sym.cont[0]) {
             case '+':
-                return ast[1].val.i + ast[2].val.i;
+                return AST(ast[1].val.i + ast[2].val.i);
             case '-':
-                return ast[1].val.i - ast[2].val.i;
+                return AST(ast[1].val.i - ast[2].val.i);
             case '*':
-                return ast[1].val.i * ast[2].val.i;
+                return AST(ast[1].val.i * ast[2].val.i);
             case '/':
-                return ast[1].val.i / ast[2].val.i;
+                return AST(ast[1].val.i / ast[2].val.i);
+            case '=':
+                return AST(ast[1].val == ast[2].val);
             default: return AST();
         }
     } else if (ast[0].val.type == CALTypeEnum::CODE) {
@@ -673,19 +704,16 @@ AST eval_operator(AST ast, Env env) {
         for (uint32_t i = 0; i < ast[0].val.code.binds.size; i++) {
             binds.put(ast[0].val.code.binds[i], ast[i + 1]);
         }
-        Env newenv(&env, binds);
-        ast[0].val.code.ast->print(0);
-        AST ret = evaluate(*ast[0].val.code.ast, newenv);
-        std::cout << "AST EVALUATE THING\n";
-        ret.print(0);
-        std::cout << "AST EVALUATE THING END\n";
+        Env newenv(env, binds);
+        AST ret = evaluate(*ast.get(0).val.code.ast, &newenv);
         return ret;
     }
+    return AST(CALType());
 }
 
-AST eval_ast(AST ast, Env env) {
+AST eval_ast(const AST &ast, Env *env) {
     if (ast.val.type == CALTypeEnum::SYM) {
-        AST e = env.get(ast.val.sym);
+        return env->get(ast.val.sym);
     }
     if (ast.nodes.size > 0) {
         AST out;
@@ -697,17 +725,30 @@ AST eval_ast(AST ast, Env env) {
     return ast;
 }
 
-AST evaluate(AST ast, Env env) {
-    if (ast.nodes.size > 0) {
+AST evaluate(const AST &ast, Env *env) {
+    if (ast.nodes.size == 1) {
+        return eval_ast(ast[0], env);
+    } else if (ast.nodes.size > 0) {
         if (ast[0].val.type == CALTypeEnum::SYM && ast[0].val.sym == "fn") {
             Vector<String> vec;
             for (uint32_t i = 0; i < ast[1].nodes.size; i++) {
                 vec.push_back(ast[1].nodes[i].val.sym);
             }
             return AST(Function{new AST(ast[2]), vec});
+        } else if (ast[0].val.type == CALTypeEnum::SYM && ast[0].val.sym == "def") {
+            env->put(ast[1].val.sym, evaluate(ast[2], env));
+            return ast[2];
+        } else if (ast[0].val.type == CALTypeEnum::SYM && ast[0].val.sym == "if") {
+            AST ex = evaluate(ast[1], env);
+            if (ex.val.type != CALTypeEnum::NONE && ex.val.i != 0) {
+                return evaluate(ast[2], env);
+            } else if (ast.nodes.size > 3) {
+                return evaluate(ast[3], env);
+            } else {
+                return AST();
+            }
         } else {
             AST x = eval_ast(ast, env);
-            //x.print(0);
             return eval_operator(x, env);
         }
     } else {
@@ -717,17 +758,30 @@ AST evaluate(AST ast, Env env) {
 
 
 int main() {
-    //std::cout << String("(a (b c (d e f g))(h i))").replace("(", " ( ").replace(")", " ) ") << "\n";
-    Reader reader("((fn (a b) (+ a b)) 1 2)");
+    String source = 
+    "(def fib (fn (n)"
+        "(if (== n 0)"
+            " (1) "
+        //else
+            "(if (== n 1)"
+                " (1) "
+            //e;se
+                "(+ (fib (- n 1)) (fib (- n 2)))"
+            ")"
+        ")"
+    "))";
+    Reader reader(source);
+    Reader reader2("(fib 25)");
     Env env;
-    env.put("+", AST((int)'+'));
-    env.put("-", AST((int)'-'));
-    env.put("*", AST((int)'*'));
-    env.put("/", AST((int)'/'));
+    env.put("+", AST("+"));
+    env.put("-", AST("-"));
+    env.put("*", AST("*"));
+    env.put("/", AST("/"));
+    env.put("==", AST("="));
     AST ast = parse(reader);
-    ast.print(0);
-    std::cout << "\n\n\n";
-    AST res = evaluate(ast, env);
-    //res.print(0);
+    AST ast2 = parse(reader2);
+    AST res = evaluate(ast, &env);
+    AST res2 = evaluate(ast2, &env);
+    res2.print(0);
     return 0;
 }

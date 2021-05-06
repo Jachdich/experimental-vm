@@ -167,16 +167,24 @@ def evaluate(ast, env):
     return eval_ast(ast, env)
 
 
-
+"""
 while True:
     try:
         print(evaluate(parse(Reader(input("usr> "))), test_env))
     except Exception as e:
         print(e)
         
-        
-#print(parse(tokenise("(def a (+ 2 2))")))
-#print(parse(tokenise("a")))
+        """
+print(evaluate(parse(Reader("(def fib (fn (n)" + 
+        "(if (= n 0)"+
+            " (1) "+
+            "(if (= n 1)"+
+                " (1) "+
+                "(+ (fib (- n 1)) (fib (- n 2)))"+
+            ")"+
+        ")"+
+    "))")), test_env))
+print(evaluate(parse(Reader("(fib 25)")), test_env))
 #print(print_ast(parse(tokenise("a"))))
 
 #print(evaluate(parse(Reader("nil")), test_env))
